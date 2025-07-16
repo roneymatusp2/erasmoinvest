@@ -418,19 +418,21 @@ export class VoiceCommandService {
 
       console.log('Comando executado com sucesso:', result);
       
-      // Mostrar resultado da execução
-      if (result.result && result.result.response) {
-        // Enviar resultado para o componente
-        this.onExecutionResult?.(result.result.response);
-        
-        // Gerar fala APENAS se for comando de voz
-        if (enableAudio) {
-          this.generateSpeech(result.result.response);
-        }
-        
-        // Mostrar toast com a resposta
-        toast.success(result.result.response, { duration: 6000 });
+      // Mostrar resultado da execução - verificar formato e exibir resposta
+      // Garante que a resposta é exibida independente do formato exato
+      const responseText = result.result?.response || result.response || result.message || JSON.stringify(result.result || result);
+      console.log('Texto da resposta que será exibido:', responseText);
+      
+      // Enviar resultado para o componente, sempre
+      this.onExecutionResult?.(responseText);
+      
+      // Gerar fala APENAS se for comando de voz
+      if (enableAudio) {
+        this.generateSpeech(responseText);
       }
+      
+      // Mostrar toast com a resposta
+      toast.success(responseText, { duration: 6000 });
       
       // Recarregar página para mostrar novo investimento
       if (commandResult.action === 'add_investment') {
