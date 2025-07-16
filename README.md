@@ -21,8 +21,7 @@
 **URL**: [https://erasmoinvest.netlify.app](https://erasmoinvest.netlify.app)
 
 ### 🔑 **Login**
-- **Usuário**: `erasmo_russo`
-- **Senha**: `123456`
+- **Senha**: `ErasmoInvest12!@`
 
 ## 🎮 **COMANDOS DE VOZ E TEXTO**
 
