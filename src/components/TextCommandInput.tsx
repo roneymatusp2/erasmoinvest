@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Send, X, Clock, Lightbulb } from 'lucide-react';
-import { VoiceCommandService } from '../services/voiceCommandService';
+import { voiceService } from '../services/voiceCommandService';
+import { VoiceCommandResult } from '../services/types';
 
 interface TextCommandInputProps {
   isVisible: boolean;
   onClose: () => void;
-  onSuccess?: (result: any) => void;
+  onSuccess?: (result: VoiceCommandResult) => void;
 }
 
 const EXAMPLE_COMMANDS = [
@@ -34,18 +35,21 @@ export const TextCommandInput: React.FC<TextCommandInputProps> = ({
     setError(null);
 
     try {
-      const voiceService = new VoiceCommandService();
       const result = await voiceService.processTextCommand(command);
       
-      if (result.action === 'error') {
-        setError(result.confirmation);
-      } else {
+      if (result) {
+        // Notifica o sucesso com o resultado do processamento
         onSuccess?.(result);
+        
+        // Limpa o comando e fecha o modal
         setCommand('');
         onClose();
+      } else {
+        setError('Erro ao processar comando');
       }
     } catch (error) {
-      setError('Erro ao processar comando: ' + (error as Error).message);
+      console.error('Erro no comando de texto:', error);
+      setError(error instanceof Error ? error.message : 'Erro desconhecido');
     } finally {
       setIsProcessing(false);
     }
@@ -58,82 +62,82 @@ export const TextCommandInput: React.FC<TextCommandInputProps> = ({
   if (!isVisible) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-blue-500/20 rounded-lg">
-              <Send className="w-5 h-5 text-blue-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-white">Comando de Texto</h3>
-          </div>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-2xl border border-slate-700/50 shadow-2xl">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold text-white">Comando de Texto</h3>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+            className="text-slate-400 hover:text-white transition-colors"
           >
-            <X className="w-5 h-5 text-slate-400" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Digite seu comando:
-            </label>
+          <div className="relative">
             <textarea
               value={command}
               onChange={(e) => setCommand(e.target.value)}
-              placeholder="Ex: Adicione 10 ações da Petrobras por 35 reais cada"
-              className="w-full h-24 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              placeholder="Digite seu comando aqui... (ex: Adicione 10 ações da Vale por 25 reais)"
+              className="w-full p-4 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              rows={3}
               disabled={isProcessing}
             />
           </div>
 
-          {/* Error */}
           {error && (
-            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-              <p className="text-red-300 text-sm">{error}</p>
+            <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-3">
+              <div className="text-red-300 text-sm">
+                {error}
+              </div>
             </div>
           )}
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={!command.trim() || isProcessing}
-            className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-colors"
-          >
-            {isProcessing ? (
-              <>
-                <Clock className="w-4 h-4 animate-spin" />
-                Processando...
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                Enviar Comando
-              </>
-            )}
-          </button>
+          <div className="flex items-center justify-between">
+            <button
+              type="submit"
+              disabled={!command.trim() || isProcessing}
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 disabled:from-gray-600 disabled:to-gray-700 text-white rounded-xl font-medium transition-all duration-300 disabled:cursor-not-allowed"
+            >
+              {isProcessing ? (
+                <>
+                  <Clock className="w-4 h-4 animate-spin" />
+                  <span>Processando...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>Enviar Comando</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
         </form>
 
-        {/* Examples */}
-        <div className="mt-6">
+        <div className="mt-6 pt-6 border-t border-slate-700/50">
           <div className="flex items-center gap-2 mb-3">
             <Lightbulb className="w-4 h-4 text-yellow-400" />
-            <h4 className="text-sm font-medium text-slate-300">Exemplos:</h4>
+            <span className="text-sm font-medium text-slate-300">Exemplos de comandos:</span>
           </div>
           
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-2">
             {EXAMPLE_COMMANDS.map((example, index) => (
               <button
                 key={index}
                 onClick={() => handleExampleClick(example)}
-                className="w-full text-left text-sm text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded-lg p-2 transition-colors"
+                className="text-left p-3 bg-slate-700/30 hover:bg-slate-700/50 border border-slate-600/30 rounded-lg text-sm text-slate-300 hover:text-white transition-all duration-200"
                 disabled={isProcessing}
               >
-                {example}
+                "{example}"
               </button>
             ))}
           </div>

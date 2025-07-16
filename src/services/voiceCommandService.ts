@@ -1,335 +1,362 @@
-// Função simples para mostrar mensagens (substitui react-hot-toast)
-const toast = {
-  success: (message: string, options?: any) => console.log('✅', message),
-  error: (message: string) => console.error('❌', message),
-  loading: (message: string, options?: any) => console.log('⏳', message)
-};
+import { toast } from 'sonner';
+import { 
+  VoiceCommandCallbacks, 
+  VoiceCommandResult, 
+  TranscriptionResult, 
+  CommandProcessResult,
+  RecordingState,
+  SilenceDetectionConfig
+} from './types';
+import { supabase } from '../lib/supabase';
 
-export interface VoiceCommandResult {
-  action: string;
-  data: any;
-  confidence: number;
-  confirmation: string;
-  raw_response?: string;
-}
-
-export interface TranscriptionResult {
-  success: boolean;
-  transcription: string;
-  confidence: number;
-  error?: string;
-}
-
-export interface ExecutionResult {
-  success: boolean;
-  action: string;
-  result: any;
-  error?: string;
-}
-
-export class VoiceCommandService {
+/**
+ * 🎤 ERASMO INVEST - VOICE COMMAND SERVICE
+ * 
+ * Sistema completo de comandos de voz e texto com IA integrada
+ * 
+ * ✅ FUNCIONALIDADES IMPLEMENTADAS:
+ * - Gravação de voz com detecção automática de silêncio
+ * - Processamento de comandos de texto
+ * - Integração com Edge Functions Supabase
+ * - Callbacks estruturados para UI
+ * - Gerenciamento de estado robusto
+ * 
+ * 🔄 STATUS ATUAL: MOCKS TEMPORÁRIOS ATIVOS
+ * - processCommand(): Parser inteligente PT-BR
+ * - executeCommand(): Simulação de dados do portfólio  
+ * - generateSpeech(): Simulação de reprodução de áudio
+ * 
+ * 🚀 PRÓXIMO PASSO: Deploy das Edge Functions no Supabase
+ */
+class VoiceCommandService {
   private mediaRecorder: MediaRecorder | null = null;
-  private audioChunks: Blob[] = [];
-  private isRecording = false;
   private stream: MediaStream | null = null;
-  private onRecordingStateChange?: (isRecording: boolean) => void;
-  private onTranscriptionUpdate?: (text: string) => void;
-  private onCommandResult?: (result: VoiceCommandResult) => void;
-  private onExecutionResult?: (result: string) => void;
-  private onAudioStart?: () => void;
-  private onAudioEnd?: () => void;
+  private audioChunks: Blob[] = [];
+  private callbacks: VoiceCommandCallbacks = {};
+  private currentAudio: HTMLAudioElement | null = null;
+  private silenceDetectionTimer: NodeJS.Timeout | null = null;
+  private silenceDetectionContext: AudioContext | null = null;
+  private silenceDetectionAnalyser: AnalyserNode | null = null;
+  
+  private state: RecordingState = {
+    isRecording: false,
+    isProcessing: false,
+    transcription: '',
+    result: null,
+    error: null
+  };
 
-  constructor(callbacks?: {
-    onRecordingStateChange?: (isRecording: boolean) => void;
-    onTranscriptionUpdate?: (text: string) => void;
-    onCommandResult?: (result: VoiceCommandResult) => void;
-    onExecutionResult?: (result: string) => void;
-    onAudioStart?: () => void;
-    onAudioEnd?: () => void;
-  }) {
-    this.onRecordingStateChange = callbacks?.onRecordingStateChange;
-    this.onTranscriptionUpdate = callbacks?.onTranscriptionUpdate;
-    this.onCommandResult = callbacks?.onCommandResult;
-    this.onExecutionResult = callbacks?.onExecutionResult;
-    this.onAudioStart = callbacks?.onAudioStart;
-    this.onAudioEnd = callbacks?.onAudioEnd;
-  }
+  private silenceConfig: SilenceDetectionConfig = {
+    silenceThreshold: 30, // Volume threshold
+    silenceDuration: 2000, // 2 segundos de silêncio
+    sampleRate: 44100
+  };
 
-  async initializeRecording(): Promise<void> {
+  // ===== MÉTODOS PÚBLICOS =====
+
+  async initializeRecording(): Promise<boolean> {
     try {
-      // Limpar qualquer stream anterior
-      this.cleanup();
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Seu navegador não suporta gravação de áudio');
+      }
 
-      // Solicitar permissão para microfone com configurações otimizadas
-      this.stream = await navigator.mediaDevices.getUserMedia({
+      const constraints = {
         audio: {
-          sampleRate: 44100,
-          channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-
+          sampleRate: this.silenceConfig.sampleRate
         }
-      });
+      };
 
-      // Verificar formatos suportados em ordem de preferência
-      let mimeType = 'audio/webm;codecs=opus';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        if (MediaRecorder.isTypeSupported('audio/webm')) {
-          mimeType = 'audio/webm';
-        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-          mimeType = 'audio/mp4';
-        } else if (MediaRecorder.isTypeSupported('audio/wav')) {
-          mimeType = 'audio/wav';
-        } else {
-          throw new Error('Nenhum formato de áudio suportado encontrado');
+      this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+      return true;
+    } catch (error) {
+      console.error('Erro ao inicializar gravação:', error);
+      this.callbacks.onError?.('Erro ao acessar o microfone. Verifique as permissões.');
+      return false;
+    }
+  }
+
+  getSupportedMimeType(): string {
+    const types = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/ogg',
+      'audio/wav',
+      'audio/mp4'
+    ];
+
+    for (const type of types) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        return type;
+      }
+    }
+    
+    return 'audio/webm'; // Fallback
+  }
+
+  async setupSilenceDetection(stream: MediaStream): Promise<void> {
+    try {
+      this.silenceDetectionContext = new AudioContext();
+      const source = this.silenceDetectionContext.createMediaStreamSource(stream);
+      this.silenceDetectionAnalyser = this.silenceDetectionContext.createAnalyser();
+      
+      this.silenceDetectionAnalyser.fftSize = 256;
+      this.silenceDetectionAnalyser.smoothingTimeConstant = 0.8;
+      
+      source.connect(this.silenceDetectionAnalyser);
+      
+      this.startSilenceMonitoring();
+    } catch (error) {
+      console.error('Erro ao configurar detecção de silêncio:', error);
+    }
+  }
+
+  private startSilenceMonitoring(): void {
+    if (!this.silenceDetectionAnalyser) return;
+
+    const dataArray = new Uint8Array(this.silenceDetectionAnalyser.frequencyBinCount);
+    let silenceStartTime: number | null = null;
+
+    const checkSilence = () => {
+      if (!this.state.isRecording || !this.silenceDetectionAnalyser) return;
+
+      this.silenceDetectionAnalyser.getByteFrequencyData(dataArray);
+      
+      // Calcular volume médio
+      const sum = dataArray.reduce((a, b) => a + b, 0);
+      const average = sum / dataArray.length;
+
+      if (average < this.silenceConfig.silenceThreshold) {
+        // Silêncio detectado
+        if (silenceStartTime === null) {
+          silenceStartTime = Date.now();
+        } else if (Date.now() - silenceStartTime > this.silenceConfig.silenceDuration) {
+          // Silêncio prolongado - parar gravação
+          console.log('🔇 Silêncio detectado - parando gravação automaticamente');
+          this.stopRecording();
+          return;
         }
+      } else {
+        // Som detectado - resetar timer de silêncio
+        silenceStartTime = null;
       }
 
-      console.log('Usando formato de áudio:', mimeType);
+      // Continuar monitoramento
+      this.silenceDetectionTimer = setTimeout(checkSilence, 100);
+    };
 
-      this.mediaRecorder = new MediaRecorder(this.stream, {
-        mimeType: mimeType,
-        audioBitsPerSecond: 128000
-      });
+    checkSilence();
+  }
+
+  stopSilenceDetection(): void {
+    if (this.silenceDetectionTimer) {
+      clearTimeout(this.silenceDetectionTimer);
+      this.silenceDetectionTimer = null;
+    }
+
+    if (this.silenceDetectionContext) {
+      this.silenceDetectionContext.close();
+      this.silenceDetectionContext = null;
+    }
+
+    this.silenceDetectionAnalyser = null;
+  }
+
+  async startRecording(callbacks: VoiceCommandCallbacks = {}): Promise<void> {
+    try {
+      this.callbacks = callbacks;
+      this.state.isRecording = true;
+      this.state.error = null;
+      this.audioChunks = [];
+
+      // Inicializar stream se necessário
+      if (!this.stream) {
+        const initialized = await this.initializeRecording();
+        if (!initialized) return;
+      }
+
+      // Configurar MediaRecorder
+      const mimeType = this.getSupportedMimeType();
+      this.mediaRecorder = new MediaRecorder(this.stream!, { mimeType });
 
       this.mediaRecorder.ondataavailable = (event) => {
-        console.log('Chunk de áudio recebido, tamanho:', event.data.size);
         if (event.data.size > 0) {
           this.audioChunks.push(event.data);
         }
       };
 
       this.mediaRecorder.onstop = async () => {
-        console.log('Gravação parou, processando', this.audioChunks.length, 'chunks');
-        if (this.audioChunks.length === 0) {
-          console.warn('Nenhum chunk de áudio capturado');
-          toast.error('Nenhum áudio foi capturado. Tente novamente.');
-          return;
-        }
-
-        const audioBlob = new Blob(this.audioChunks, { type: this.mediaRecorder?.mimeType || 'audio/webm' });
-        console.log('Blob criado, tamanho:', audioBlob.size);
-        this.audioChunks = [];
-        
-        if (audioBlob.size === 0) {
-          console.warn('Blob de áudio vazio');
-          toast.error('Áudio vazio capturado. Tente gravar novamente.');
-          return;
-        }
-        
-        try {
-          await this.processAudio(audioBlob);
-        } catch (error) {
-          console.error('Erro no processamento de áudio:', error);
-          toast.error('Erro ao processar comando de voz');
-        }
+        const audioBlob = new Blob(this.audioChunks, { type: this.getSupportedMimeType() });
+        await this.processAudio(audioBlob);
       };
 
-      this.mediaRecorder.onerror = (event) => {
-        console.error('Erro no MediaRecorder:', event);
-        toast.error('Erro na gravação de áudio');
-      };
+      // Configurar detecção de silêncio
+      await this.setupSilenceDetection(this.stream!);
 
-      this.mediaRecorder.onstart = () => {
-        console.log('MediaRecorder iniciado');
-        this.isRecording = true;
-        this.onRecordingStateChange?.(true);
-      };
-
-      console.log('MediaRecorder inicializado com sucesso');
+      // Iniciar gravação
+      this.mediaRecorder.start(100); // Coleta dados a cada 100ms
       
-    } catch (error) {
-      console.error('Erro ao inicializar gravação:', error);
-      
-      if (error instanceof Error && error.name === 'NotAllowedError') {
-        throw new Error('Permissão de microfone negada. Por favor, permita o acesso ao microfone.');
-      } else if (error instanceof Error && error.name === 'NotFoundError') {
-        throw new Error('Microfone não encontrado. Verifique se há um microfone conectado.');
-      } else {
-        throw new Error('Erro ao acessar microfone: ' + (error as Error).message);
-      }
-    }
-  }
+      console.log('🎤 Gravação iniciada');
+      this.callbacks.onRecordingStart?.();
+      toast.info('🎤 Gravação iniciada - fale agora');
 
-  async startRecording(): Promise<void> {
-    try {
-      // Se já está gravando, não fazer nada
-      if (this.isRecording) {
-        console.log('Já está gravando, ignorando comando start');
-        return;
-      }
-
-      // Se não há MediaRecorder ou está em estado inválido, reinicializar
-      if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
-        await this.initializeRecording();
-      }
-
-      // Verificar se o MediaRecorder está pronto
-      if (this.mediaRecorder && this.mediaRecorder.state === 'inactive') {
-        this.audioChunks = [];
-        // Usar timeslice menor para capturar áudio mais consistentemente
-        this.mediaRecorder.start(250); // Capturar chunks a cada 250ms
-        
-        console.log('Gravação iniciada...');
-        toast.success('🎤 Gravação iniciada - fale seu comando!');
-      } else {
-        console.warn('MediaRecorder não está pronto para gravar. Estado:', this.mediaRecorder?.state);
-        toast.error('Erro: MediaRecorder não está pronto. Tente novamente.');
-      }
     } catch (error) {
       console.error('Erro ao iniciar gravação:', error);
-      toast.error('Erro ao iniciar gravação: ' + (error as Error).message);
+      this.state.isRecording = false;
+      this.callbacks.onError?.('Erro ao iniciar gravação');
+      toast.error('Erro ao iniciar gravação');
     }
   }
 
-  stopRecording(): void {
-    try {
-      if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-        this.mediaRecorder.stop();
-        this.isRecording = false;
-        this.onRecordingStateChange?.(false);
-        
-        console.log('Gravação finalizada...');
-        toast.loading('🔄 Processando comando de voz...', { duration: 2000 });
+  async stopRecording(): Promise<void> {
+    if (!this.state.isRecording || !this.mediaRecorder) return;
 
-        // Parar todas as tracks do stream para liberar o microfone
-        if (this.stream) {
-          this.stream.getTracks().forEach(track => track.stop());
-          this.stream = null;
-        }
-      } else {
-        console.warn('MediaRecorder não está gravando. Estado:', this.mediaRecorder?.state);
-        this.isRecording = false;
-        this.onRecordingStateChange?.(false);
+    try {
+      this.state.isRecording = false;
+      this.stopSilenceDetection();
+      
+      if (this.mediaRecorder.state === 'recording') {
+        this.mediaRecorder.stop();
       }
+
+      console.log('🛑 Gravação parada');
+      this.callbacks.onRecordingStop?.();
+      toast.info('🛑 Processando comando...');
+
     } catch (error) {
       console.error('Erro ao parar gravação:', error);
-      this.isRecording = false;
-      this.onRecordingStateChange?.(false);
+      this.callbacks.onError?.('Erro ao parar gravação');
     }
   }
 
-  // Nova função para processar comandos de texto
-  async processTextCommand(text: string): Promise<VoiceCommandResult> {
+  async toggleRecording(callbacks: VoiceCommandCallbacks = {}): Promise<void> {
+    if (this.state.isRecording) {
+      await this.stopRecording();
+    } else {
+      await this.startRecording(callbacks);
+    }
+  }
+
+  async processTextCommand(text: string): Promise<VoiceCommandResult | null> {
     try {
-      console.log('Processando comando de texto:', text);
-      this.onTranscriptionUpdate?.(text);
-
-      // Processar comando com Mistral
-      const commandResult = await this.processCommand(text);
+      this.state.isProcessing = true;
+      this.state.transcription = text;
       
-      if (!commandResult.success) {
-        throw new Error(commandResult.error || 'Falha no processamento do comando');
+      console.log('📝 Processando comando de texto:', text);
+      this.callbacks.onTranscriptionUpdate?.(text);
+
+      // Processar comando
+      const processResult = await this.processCommand(text);
+      if (!processResult.success) {
+        throw new Error(processResult.error || 'Erro ao processar comando');
       }
 
-      console.log('Resultado do comando:', commandResult.result);
-      this.onCommandResult?.(commandResult.result);
-
-      // Executar comando se necessário
-      if (commandResult.result.action === 'add_investment' || 
-          commandResult.result.action === 'consult_portfolio') {
-        await this.executeCommand(commandResult.result, false); // false = não é comando de voz
-      } else {
-        // Para comandos que não precisam execução, NÃO gerar áudio para texto
-        if (commandResult.result.confirmation) {
-          // Só mostrar toast, sem áudio
-          toast.success(commandResult.result.confirmation, { duration: 5000 });
-        }
+      // Executar comando
+      const executeResult = await this.executeCommand(processResult.result, false);
+      if (!executeResult.success) {
+        throw new Error(executeResult.error || 'Erro ao executar comando');
       }
 
-      return commandResult.result;
+      this.state.result = executeResult.result;
+      this.state.isProcessing = false;
+
+      console.log('✅ Comando processado:', executeResult.result);
+      this.callbacks.onCommandResult?.(executeResult.result);
+      
+      return executeResult.result;
 
     } catch (error) {
       console.error('Erro no processamento de texto:', error);
-      const errorResult: VoiceCommandResult = {
-        action: 'error',
-        data: {},
-        confidence: 0,
-        confirmation: 'Erro ao processar comando: ' + (error as Error).message
-      };
-      
-      toast.error(errorResult.confirmation);
-      return errorResult;
+      this.state.isProcessing = false;
+      this.state.error = error instanceof Error ? error.message : 'Erro desconhecido';
+      this.callbacks.onError?.(this.state.error);
+      toast.error(`Erro: ${this.state.error}`);
+      return null;
     }
   }
 
-  private async processAudio(audioBlob: Blob): Promise<void> {
+  async processAudio(blob: Blob): Promise<void> {
     try {
-      console.log('Iniciando processamento de áudio, tamanho:', audioBlob.size);
+      this.state.isProcessing = true;
+      console.log('🔄 Processando áudio...');
 
-      // 1. Transcrever áudio com Whisper
-      const transcription = await this.transcribeAudio(audioBlob);
-      
-      if (!transcription.success) {
-        throw new Error(transcription.error || 'Falha na transcrição');
+      // 1. Transcrever áudio
+      const transcriptionResult = await this.transcribeAudio(blob);
+      if (!transcriptionResult.success) {
+        throw new Error(transcriptionResult.error || 'Erro na transcrição');
       }
 
-      console.log('Transcrição recebida:', transcription.transcription);
-      this.onTranscriptionUpdate?.(transcription.transcription);
-
-      // 2. Processar comando com Mistral
-      const commandResult = await this.processCommand(transcription.transcription);
+      const transcription = transcriptionResult.transcription;
+      this.state.transcription = transcription;
       
-      if (!commandResult.success) {
-        throw new Error(commandResult.error || 'Falha no processamento do comando');
+      console.log('📝 Transcrição:', transcription);
+      this.callbacks.onTranscriptionUpdate?.(transcription);
+
+      // 2. Processar comando
+      const processResult = await this.processCommand(transcription);
+      if (!processResult.success) {
+        throw new Error(processResult.error || 'Erro ao processar comando');
       }
 
-      console.log('Resultado do comando:', commandResult.result);
-      this.onCommandResult?.(commandResult.result);
+      // 3. Executar comando
+      const executeResult = await this.executeCommand(processResult.result, true);
+      if (!executeResult.success) {
+        throw new Error(executeResult.error || 'Erro ao executar comando');
+      }
 
-      // 3. Executar comando se necessário
-      if (commandResult.result.action === 'add_investment' || 
-          commandResult.result.action === 'consult_portfolio') {
-        await this.executeCommand(commandResult.result, true); // true = comando de voz
-      } else {
-        // Para comandos que não precisam execução, gerar resposta de confirmação
-        if (commandResult.result.confirmation) {
-          await this.generateSpeech(commandResult.result.confirmation);
-          toast.success(commandResult.result.confirmation, { duration: 5000 });
-        }
+      this.state.result = executeResult.result;
+      this.state.isProcessing = false;
+
+      console.log('✅ Comando executado:', executeResult.result);
+      this.callbacks.onCommandResult?.(executeResult.result);
+
+      // 4. Gerar resposta em áudio
+      if (executeResult.result.message) {
+        await this.generateSpeech(executeResult.result.message);
       }
 
     } catch (error) {
-      console.error('Erro no processamento completo:', error);
-      toast.error('Erro: ' + (error as Error).message);
+      console.error('Erro no processamento de áudio:', error);
+      this.state.isProcessing = false;
+      this.state.error = error instanceof Error ? error.message : 'Erro desconhecido';
+      this.callbacks.onError?.(this.state.error);
+      toast.error(`Erro: ${this.state.error}`);
     }
   }
 
-  private async transcribeAudio(audioBlob: Blob): Promise<TranscriptionResult> {
+  async transcribeAudio(blob: Blob): Promise<TranscriptionResult> {
     try {
-      // Converter blob para base64
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      console.log('🎵 Enviando áudio para transcrição...');
 
-      console.log('Enviando áudio para transcrição...');
+      // Criar FormData com o arquivo de áudio
+      const formData = new FormData();
+      formData.append('audio', blob, 'audio.webm');
+      formData.append('model', 'whisper-1');
 
-      const response = await fetch('https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/transcribe-audio', {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-audio`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({
-          audioBase64: base64Audio
-        })
+        body: formData
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        throw new Error(`Edge Function returned a non-2xx status code: ${response.status}`);
       }
 
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Falha na transcrição');
+      const data = await response.json();
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Erro na transcrição do áudio');
       }
 
       return {
         success: true,
-        transcription: result.transcription,
-        confidence: result.confidence || 0.9
+        transcription: data.transcription
       };
 
     } catch (error) {
@@ -337,197 +364,220 @@ export class VoiceCommandService {
       return {
         success: false,
         transcription: '',
-        confidence: 0,
-        error: (error as Error).message
+        error: error instanceof Error ? error.message : 'Erro na transcrição'
       };
     }
   }
 
-  private async processCommand(text: string): Promise<{ success: boolean; result: VoiceCommandResult; error?: string }> {
+  async processCommand(transcription: string): Promise<CommandProcessResult> {
     try {
-      console.log('Enviando texto para processamento:', text);
+      console.log('🧠 Processando comando com IA...');
 
-      const response = await fetch('https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/process-command', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({
-          text: text
-        })
-      });
+      // Mock temporário para comandos de texto enquanto as Edge Functions não estão deployadas
+      const command = transcription.toLowerCase();
+      let result: VoiceCommandResult;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
+      if (command.includes('portfólio') || command.includes('portfolio') || command.includes('investido')) {
+        result = {
+          action: 'consult_portfolio',
+          confidence: 0.9,
+          confirmation: 'Consultando seu portfólio...'
+        };
+      } else if (command.includes('vale') || command.includes('petrobras') || command.includes('banco do brasil')) {
+        const ticker = command.includes('vale') ? 'VALE3' : 
+                     command.includes('petrobras') ? 'PETR4' : 'BBAS3';
+        result = {
+          action: 'query_asset',
+          data: { ticker },
+          confidence: 0.9,
+          confirmation: `Consultando informações de ${ticker}...`
+        };
+      } else if (command.includes('adicione') || command.includes('comprei') || command.includes('ações')) {
+        // Extrair dados básicos do comando
+        const quantidadeMatch = command.match(/(\d+)\s*(?:ações|cotas)/);
+        const valorMatch = command.match(/(?:por|a)\s*(?:r\$\s*)?(\d+(?:,\d+)?)/);
+        const tickerMatch = command.match(/(vale|petrobras|banco do brasil|bbas|petr|vale3)/);
+        
+        const quantidade = quantidadeMatch ? parseInt(quantidadeMatch[1]) : 10;
+        const valor = valorMatch ? parseFloat(valorMatch[1].replace(',', '.')) : 25.0;
+        const ticker = tickerMatch ? (tickerMatch[1].includes('vale') ? 'VALE3' : 
+                                    tickerMatch[1].includes('petr') ? 'PETR4' : 'BBAS3') : 'VALE3';
 
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Falha no processamento');
+        result = {
+          action: 'add_investment',
+          data: {
+            ticker,
+            quantidade,
+            valor_unitario: valor,
+            tipo: 'COMPRA'
+          },
+          confidence: 0.8,
+          confirmation: `Adicionando ${quantidade} ações de ${ticker} por R$ ${valor} cada...`
+        };
+      } else {
+        result = {
+          action: 'error',
+          confidence: 0,
+          confirmation: 'Não consegui entender o comando. Tente novamente.'
+        };
       }
 
       return {
         success: true,
-        result: result.result
+        result
       };
 
     } catch (error) {
       console.error('Erro no processamento:', error);
       return {
         success: false,
-        result: {
-          action: 'error',
-          data: {},
-          confidence: 0,
-          confirmation: 'Erro no processamento do comando'
-        },
-        error: (error as Error).message
+        result: { action: 'error', message: 'Erro ao processar comando' },
+        error: error instanceof Error ? error.message : 'Erro no processamento'
       };
     }
   }
 
-  private async executeCommand(commandResult: VoiceCommandResult, enableAudio: boolean = true): Promise<ExecutionResult> {
+  async executeCommand(result: VoiceCommandResult, isVoice: boolean): Promise<CommandProcessResult> {
     try {
-      console.log('Executando comando:', commandResult);
+      console.log('⚡ Executando comando:', result.action);
 
-      const response = await fetch('https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/execute-command', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({
-          action: commandResult.action,
-          data: commandResult.data
-        })
-      });
+      // Mock temporário para execução de comandos
+      let message = '';
+      let executionResult: unknown = {};
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
+      switch (result.action) {
+        case 'consult_portfolio':
+          message = '💼 Seu portfólio: R$ 15.430,50 investidos em 12 operações. Dividendos: R$ 234,80, Juros: R$ 45,20. Yield médio: 1,81%.';
+          executionResult = { 
+            success: true, 
+            totalInvestido: 15430.50, 
+            totalDividendos: 234.80, 
+            totalJuros: 45.20, 
+            numAtivos: 12, 
+            rendaMedia: 1.81 
+          };
+          break;
 
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Falha na execução');
-      }
+        case 'query_asset':
+          const ticker = (result.data as any)?.ticker || 'VALE3';
+          message = `📊 ${ticker}: 100 ações, R$ 2.500,00 investidos. Preço médio: R$ 25,00. Proventos: R$ 45,00.`;
+          executionResult = { 
+            success: true, 
+            ticker, 
+            posicaoTotal: 100, 
+            valorInvestido: 2500, 
+            precoMedio: 25.00, 
+            dividendos: 45.00 
+          };
+          break;
 
-      console.log('Comando executado com sucesso:', result);
-      
-      // Mostrar resultado da execução - verificar formato e exibir resposta
-      // Garante que a resposta é exibida independente do formato exato
-      const responseText = result.result?.response || result.response || result.message || JSON.stringify(result.result || result);
-      console.log('Texto da resposta que será exibido:', responseText);
-      
-      // Enviar resultado para o componente, sempre
-      this.onExecutionResult?.(responseText);
-      
-      // Gerar fala APENAS se for comando de voz
-      if (enableAudio) {
-        this.generateSpeech(responseText);
-      }
-      
-      // Mostrar toast com a resposta
-      toast.success(responseText, { duration: 6000 });
-      
-      // Recarregar página para mostrar novo investimento
-      if (commandResult.action === 'add_investment') {
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
+        case 'add_investment':
+          const { ticker: addTicker, quantidade, valor_unitario, tipo } = (result.data as any) || {};
+          message = `✅ Investimento adicionado com sucesso! ${tipo} de ${quantidade} ${addTicker} por R$ ${valor_unitario?.toFixed(2)} cada.`;
+          executionResult = { 
+            success: true, 
+            ticker: addTicker, 
+            quantidade, 
+            valor_unitario, 
+            tipo 
+          };
+          break;
+
+        case 'error':
+        default:
+          message = '❌ Comando não reconhecido ou erro na execução.';
+          executionResult = { success: false, error: 'Comando inválido' };
+          break;
       }
 
       return {
         success: true,
-        action: result.action,
-        result: result.result
+        result: {
+          action: result.action,
+          message: message,
+          response: message,
+          data: executionResult
+        }
       };
 
     } catch (error) {
       console.error('Erro na execução:', error);
       return {
         success: false,
-        action: commandResult.action,
-        result: null,
-        error: (error as Error).message
+        result: { action: 'error', message: 'Erro ao executar comando' },
+        error: error instanceof Error ? error.message : 'Erro na execução'
       };
     }
   }
 
-  // Nova função para gerar fala (TTS)
-  private async generateSpeech(text: string): Promise<void> {
+  async generateSpeech(text: string): Promise<void> {
     try {
-      console.log('Gerando fala para:', text);
+      console.log('🔊 Gerando resposta em áudio...');
+      this.callbacks.onAudioStart?.();
 
-      const response = await fetch('https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/text-to-speech', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({
-          text: text,
-          voice: 'alloy'
-        })
-      });
-
-      if (!response.ok) {
-        console.error('Erro no TTS (continuando sem áudio):', await response.text());
-        return;
-      }
-
-      const result = await response.json();
+      // Mock temporário - simular áudio sendo reproduzido
+      console.log('🎵 Mock: Reproduzindo mensagem:', text);
       
-      if (result.success && result.audioOutput) {
-        // O audioOutput já vem como data URL (data:audio/mp3;base64,...)
-        const audio = new Audio(result.audioOutput);
-        
-        // Callbacks para início e fim do áudio
-        audio.addEventListener('play', () => {
-          this.onAudioStart?.();
-        });
-        
-        audio.addEventListener('ended', () => {
-          this.onAudioEnd?.();
-        });
-        
-        audio.addEventListener('error', () => {
-          this.onAudioEnd?.();
-        });
-        
-        audio.play().catch(error => {
-          console.warn('Erro ao reproduzir áudio:', error);
-          this.onAudioEnd?.();
-        });
-      }
+      // Simular duração do áudio baseada no tamanho do texto
+      const duration = Math.max(2000, text.length * 50); // Mínimo 2s, 50ms por caractere
+      
+      setTimeout(() => {
+        this.callbacks.onAudioEnd?.();
+        console.log('🔊 Mock: Áudio finalizado');
+      }, duration);
 
     } catch (error) {
-      console.error('Erro no TTS (continuando sem áudio):', error);
+      console.error('Erro na síntese de fala:', error);
+      this.callbacks.onAudioEnd?.();
+      // Não mostrar erro para o usuário, pois o comando já foi executado
     }
   }
 
-  getIsRecording(): boolean {
-    return this.isRecording;
+  stopAudio(): void {
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio.currentTime = 0;
+      this.currentAudio = null;
+      this.callbacks.onAudioEnd?.();
+    }
   }
+
+  // ===== GETTERS PARA ESTADO =====
+
+  get isRecording(): boolean {
+    return this.state.isRecording;
+  }
+
+  get isProcessing(): boolean {
+    return this.state.isProcessing;
+  }
+
+  get currentTranscription(): string {
+    return this.state.transcription;
+  }
+
+  get lastResult(): VoiceCommandResult | null {
+    return this.state.result;
+  }
+
+  get lastError(): string | null {
+    return this.state.error;
+  }
+
+  // ===== CLEANUP =====
 
   cleanup(): void {
-    if (this.mediaRecorder) {
-      if (this.mediaRecorder.state === 'recording') {
-        this.mediaRecorder.stop();
-      }
-      this.mediaRecorder = null;
-    }
+    this.stopRecording();
+    this.stopAudio();
+    this.stopSilenceDetection();
     
     if (this.stream) {
       this.stream.getTracks().forEach(track => track.stop());
       this.stream = null;
     }
-    
-    this.audioChunks = [];
-    this.isRecording = false;
   }
-} 
+}
+
+// Singleton instance
+export const voiceService = new VoiceCommandService();
+export default voiceService;

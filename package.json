@@ -1,8 +1,8 @@
 {
   "name": "erasmoinvest",
   "private": true,
-  "version": "1.0.0",
-  "description": "Sistema completo de controle de investimentos pessoais com Supabase",
+  "version": "2.0.0",
+  "description": "🚀 Sistema Inteligente de Gestão de Investimentos com IA - Comandos de voz, Mistral AI, OpenAI integrados",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -26,6 +26,7 @@
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.5.2",
     "recharts": "^3.1.0",
+    "sonner": "^1.6.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

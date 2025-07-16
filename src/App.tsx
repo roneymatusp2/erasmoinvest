@@ -15,6 +15,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
+import { Toaster as SonnerToaster } from 'sonner';
 import toast from 'react-hot-toast';
 import Login from './components/Login';
 
@@ -23,8 +24,8 @@ import { portfolioData } from './data/portfolioData';
 import { assetMetadata } from './data/assetMetadata';
 
 // Serviços do Supabase
-import { portfolioService } from './services/supabaseService';
-import { updatePortfoliosWithMarketData, PortfolioWithMarketData } from './services/portfolioCalculator';
+import { portfolioService, AssetMetadata as SupabaseAssetMetadata } from './services/supabaseService';
+// import { updatePortfoliosWithMarketData, PortfolioWithMarketData } from './services/portfolioCalculator';
 
 // Estilos e componentes
 import './index.css';
@@ -69,14 +70,14 @@ function App() {
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [showEditModal, setShowEditModal] = useState<boolean>(false);
   const [showNewAssetModal, setShowNewAssetModal] = useState<boolean>(false);
-  const [editingInvestment, setEditingInvestment] = useState<any>(null);
+  const [editingInvestment, setEditingInvestment] = useState<unknown>(null);
   
   // Carregar dados (Supabase ou locais)
   useEffect(() => {
     if (isAuthenticated) {
       loadData();
     }
-  }, [isAuthenticated, refreshKey]);
+  }, [isAuthenticated, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
     try {
@@ -175,20 +176,19 @@ function App() {
           profit,
           profitPercent: isNaN(profitPercent) ? 0 : profitPercent,
           investments: data.map(row => ({
-            id: `${ticker}-${row.data}`,
-            ticker,
             data: row.data,
-            tipo: row.compra > 0 ? 'COMPRA' : row.venda > 0 ? 'VENDA' : 'DIVIDENDO',
+            tipo: (row.compra > 0 ? 'COMPRA' : row.venda > 0 ? 'VENDA' : 'DIVIDENDO') as 'COMPRA' | 'VENDA' | 'DIVIDENDO' | 'JUROS' | 'DESDOBRAMENTO',
+            compra: row.compra,
+            venda: row.venda,
             quantidade: row.compra || row.venda || 0,
+            valorUnit: row.valorUnit || 0,
             valor_unitario: row.valorUnit || 0,
             valor_total: (row.compra - row.venda) * row.valorUnit,
             dividendos: row.dividendos || 0,
             juros: row.juros || 0,
             impostos: row.impostos || 0,
-            observacoes: row.obs || '',
-            user_id: 'local',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            obs: row.obs || '',
+            observacoes: row.obs || ''
           }))
         };
       });
@@ -227,7 +227,7 @@ function App() {
     toast.success('Dados atualizados!');
   };
   
-  const handleEditInvestment = (investment: any) => {
+  const handleEditInvestment = (investment: unknown) => {
     setEditingInvestment(investment);
     setShowEditModal(true);
   };
@@ -600,6 +600,10 @@ function App() {
           }
         }}
       />
+      <SonnerToaster 
+        position="top-center"
+        theme="dark"
+      />
       
               <Header currentTab={activeTab} onTabChange={setActiveTab} />
 
@@ -880,7 +884,12 @@ function App() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         activeTab={activeTab}
-        metadata={portfolios.find(p => p.ticker === activeTab)?.metadata || null}
+        metadata={portfolios.find(p => p.ticker === activeTab)?.metadata ? {
+          ...portfolios.find(p => p.ticker === activeTab)!.metadata!,
+          id: activeTab,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        } as SupabaseAssetMetadata : null}
         onSuccess={handleModalSuccess}
       />
       
@@ -891,7 +900,12 @@ function App() {
           setEditingInvestment(null);
         }}
         investment={editingInvestment}
-        metadata={portfolios.find(p => p.ticker === activeTab)?.metadata || null}
+        metadata={portfolios.find(p => p.ticker === activeTab)?.metadata ? {
+          ...portfolios.find(p => p.ticker === activeTab)!.metadata!,
+          id: activeTab,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        } as SupabaseAssetMetadata : null}
         onSuccess={handleModalSuccess}
       />
       

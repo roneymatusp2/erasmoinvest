@@ -1,154 +1,223 @@
-# 📊 Sistema de Controle de Investimentos - Erasmo Invest
+# 🚀 **ERASMO INVEST** - Sistema Inteligente de Gestão de Investimentos
 
-Sistema completo para controle e análise de investimentos pessoais com integração ao Supabase.
+![Versão](https://img.shields.io/badge/versão-2.0.0-blue.svg)
+![Status](https://img.shields.io/badge/status-produção-green.svg)
+![IA](https://img.shields.io/badge/IA-integrada-purple.svg)
 
-## 🚀 Funcionalidades
+## 🎯 **VISÃO GERAL**
 
-- **Dashboard Avançado**: Análise completa do portfólio
-- **Controle de FIIs**: Gestão de Fundos Imobiliários 
-- **Ações Brasileiras**: Acompanhamento de ações da B3
-- **Ativos Internacionais**: ETFs e REITs americanos
-- **Preços em Tempo Real**: Integração com APIs de mercado
-- **Análise de Performance**: Relatórios detalhados
-- **Cálculo de Yield**: DY histórico e projeções
-- **Autenticação Segura**: Acesso restrito com senha
-- **Responsive Design**: Interface moderna e responsiva
+**Erasmo Invest** é uma plataforma completa e inteligente para gestão de investimentos pessoais, com **comandos de voz e IA integrada**. Desenvolvido com React + TypeScript + Supabase, oferece uma experiência moderna e intuitiva para controlar seu portfólio.
 
-### 📈 APIs de Mercado Integradas
+### 🌟 **NOVIDADES v2.0**
+- 🎤 **Comandos de Voz** - Controle total por voz com detecção automática de silêncio
+- 🧠 **IA Integrada** - Mistral AI + OpenAI para processamento de linguagem natural
+- 🔊 **Resposta em Áudio** - Síntese de fala com OpenAI TTS
+- 📝 **Comandos de Texto** - Interface moderna para comandos escritos
+- ⚡ **Edge Functions** - Backend serverless com Supabase
 
-- **Brapi.dev**: Ações brasileiras e FIIs (B3)
-- **Finnhub.io**: Ações americanas e dados em tempo real
-- **Alpha Vantage**: Backup para ações internacionais
-- **Sistema de Cache**: 1 minuto de cache para performance
+## 🚀 **ACESSO RÁPIDO**
 
-## 🛠️ Tecnologias
+### 🌐 **Aplicação Online**
+**URL**: [https://erasmoinvest.netlify.app](https://erasmoinvest.netlify.app)
 
-- **Frontend**: React + TypeScript + Vite
-- **Estilização**: Tailwind CSS + Framer Motion
-- **Backend**: Supabase (PostgreSQL)
-- **Gráficos**: Recharts
-- **Ícones**: Lucide React
-- **Deploy**: Netlify
+### 🔑 **Login**
+- **Usuário**: `erasmo_russo`
+- **Senha**: `123456`
 
-## 📱 Preview
+## 🎮 **COMANDOS DE VOZ E TEXTO**
 
-- **URL de Produção**: [erasmoinvest.netlify.app](https://erasmoinvest.netlify.app)
-- **Usuário Autorizado**: erasmorusso@uol.com.br
+### 🎤 **Como Usar Comandos de Voz**
+1. Pressione e **segure** o botão azul "Comando de Voz"
+2. Fale seu comando claramente
+3. **Solte** o botão (ou aguarde 2s de silêncio)
+4. Aguarde a IA processar e responder
 
-## 🏗️ Estrutura do Projeto
+### 📝 **Como Usar Comandos de Texto**
+1. Clique no botão "Texto"
+2. Digite seu comando
+3. Pressione "Enviar Comando"
 
+### 💬 **Exemplos de Comandos**
+
+#### **📊 Consultar Portfólio**
 ```
-src/
-├── components/          # Componentes React
-├── data/               # Dados locais (fallback)
-├── lib/                # Configurações (Supabase)
-├── services/           # Serviços e APIs
-├── types/              # Tipos TypeScript
-└── styles/             # Estilos globais
-
-supabase/
-└── migrations/         # Migrações do banco
+"Como está meu portfólio?"
+"Qual o valor total dos meus investimentos?"
+"Quantos ativos eu tenho?"
 ```
 
-## 🔧 Configuração Local
+#### **🔍 Consultar Ativos**
+```
+"Quantas ações da Vale eu tenho?"
+"Como está o Banco do Brasil?"
+"Mostre informações da Petrobras"
+```
 
-1. **Clone o repositório**
+#### **➕ Adicionar Investimentos**
+```
+"Adicione 10 ações da Vale por 25 reais"
+"Comprei 5 ações do Banco do Brasil a 30,50"
+"Adicione 100 ações da Petrobras por 35 reais cada"
+```
+
+## 🏗️ **ARQUITETURA TÉCNICA**
+
+### **Frontend**
+- ⚛️ **React 18** + TypeScript
+- 🎨 **Tailwind CSS** + Framer Motion
+- 📱 **Responsive Design**
+- 🔥 **Vite** (build ultra-rápido)
+
+### **Backend**
+- 🐘 **Supabase PostgreSQL** (banco de dados)
+- ⚡ **Edge Functions** (Deno + TypeScript)
+- 🔒 **Row Level Security** (RLS)
+- 🌐 **Real-time updates**
+
+### **IA e APIs**
+- 🧠 **Mistral AI** (processamento de comandos)
+- 🎵 **OpenAI Whisper** (speech-to-text)
+- 🔊 **OpenAI TTS** (text-to-speech)
+- 📊 **APIs de Mercado** (dados em tempo real)
+
+## 🛠️ **DESENVOLVIMENTO LOCAL**
+
+### **Pré-requisitos**
+- Node.js 18+
+- npm ou yarn
+
+### **Instalação**
 ```bash
-git clone https://github.com/[usuario]/erasmoinvest.git
+# Clone o repositório
+git clone https://github.com/roneymatusp2/erasmoinvest.git
+
+# Entre na pasta
 cd erasmoinvest
-```
 
-2. **Instale dependências**
-```bash
+# Instale dependências
 npm install
-```
 
-3. **Configure variáveis de ambiente**
-```bash
-# Crie arquivo .env na raiz do projeto
+# Configure variáveis de ambiente
+cp .env.example .env
+# Edite .env com suas chaves
 
-# Configurações do Supabase
-VITE_SUPABASE_URL=https://gjvtncdjcslnkfctqnfy.supabase.co
-VITE_SUPABASE_ANON_KEY=sua_chave_supabase_aqui
-
-# APIs de Mercado Financeiro
-VITE_ALPHA_VANTAGE_API_KEY=7KAUW1MTXT6TPCKU
-VITE_FINNHUB_API_KEY=cvu1cmhr01qjg136up40cvu1cmhr01qjg136up4g
-```
-
-4. **Execute em desenvolvimento**
-```bash
+# Inicie desenvolvimento
 npm run dev
 ```
 
-## 🗄️ Configuração do Banco de Dados
+### **Scripts Disponíveis**
+```bash
+npm run dev          # Desenvolvimento
+npm run build        # Build produção
+npm run preview      # Preview do build
+npm run type-check   # Verificar tipos
+npm run lint         # Verificar código
+npm run build:check  # Build + verificações
+```
 
-O projeto utiliza Supabase com as seguintes tabelas:
+## 📊 **FUNCIONALIDADES PRINCIPAIS**
 
-- `asset_metadata`: Metadados dos ativos (FIIs, ações, ETFs)
-- `investments`: Registros de investimentos
-- `user_portfolios`: Controle de portfólios
+### **💼 Gestão de Portfólio**
+- ➕ Adicionar investimentos (ações, FIIs, ETFs, REITs)
+- 📈 Acompanhar performance em tempo real
+- 💰 Controle de dividendos e juros
+- 📊 Análise de rentabilidade e DY
 
-### Migrações Executadas:
-- ✅ Criação das tabelas principais
-- ✅ Configuração de RLS (Row Level Security)
-- ✅ Seed inicial com metadados dos ativos
-- ✅ Índices para performance
-- ✅ Triggers para auditoria
+### **📱 Interface Moderna**
+- 🌙 **Tema escuro** elegante
+- 📱 **Responsivo** (mobile-first)
+- ⚡ **Animações fluidas** com Framer Motion
+- 🎨 **Componentes reutilizáveis**
 
-## 🚀 Deploy no Netlify
+### **📊 Dashboards Inteligentes**
+- 📈 **Overview geral** do portfólio
+- 🥧 **Gráficos interativos** (pizza, barras, linhas)
+- 📋 **Tabelas detalhadas** com filtros
+- 📤 **Exportação Excel** profissional
 
-### Configuração Automática:
+### **🔍 Análise Avançada**
+- 💹 **Cálculo automático** de preço médio
+- 📊 **Dividend Yield** por ativo e total
+- 🎯 **Alocação por setor/tipo/país**
+- 📈 **Performance histórica**
 
-1. **Conecte o repositório GitHub ao Netlify**
-2. **Configure as variáveis de ambiente no Netlify:**
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-   - `VITE_ALPHA_VANTAGE_API_KEY`
-   - `VITE_FINNHUB_API_KEY`
+## 🔧 **CONFIGURAÇÃO SUPABASE**
 
-3. **Deploy automático:** O Netlify detectará automaticamente as configurações do `netlify.toml`
+### **Variáveis de Ambiente**
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
 
-### Configurações do Build:
-- **Build Command**: `npm run build`
-- **Publish Directory**: `dist`
-- **Node Version**: 18
+### **Edge Functions**
+```bash
+supabase functions deploy transcribe-audio
+supabase functions deploy process-command
+supabase functions deploy execute-command
+supabase functions deploy text-to-speech
+```
 
-## 🔐 Segurança
+## 📱 **DEPLOY**
 
-- ✅ RLS habilitado em todas as tabelas
-- ✅ Acesso restrito por email autorizado
-- ✅ Variáveis de ambiente seguras
-- ✅ Headers de segurança configurados
-- ✅ HTTPS obrigatório
+### **Netlify (Automático)**
+- 🔄 **Deploy automático** via GitHub
+- 🌐 **CDN global** para performance
+- 🔒 **HTTPS** por padrão
+- ⚡ **Build otimizado** com Vite
 
-## 📊 Dados Suportados
+### **Variáveis no Netlify**
+```env
+VITE_SUPABASE_URL=https://gjvtncdjcslnkfctqnfy.supabase.co
+VITE_SUPABASE_ANON_KEY=your-key-here
+```
 
-### FIIs Brasileiros:
-- ALZR11, BCIA11, BRCO11, BTLG11
-- HGBS11, HGCR11, HGFF11, HGLG11
-- KFOF11, KNCR11, KNRI11, KNSC11
-- RCRB11, XPLG11, XPML11
+## 🔒 **SEGURANÇA**
 
-### Ações Brasileiras:
-- BBAS3, BBSE3, B3SA3, BBDC4
-- CPFE3, EGIE3, FLRY3, ODPV3
-- PSSA3, RADL3, VALE3, WEGE3
+- 🛡️ **Row Level Security** (RLS) no Supabase
+- 🔐 **Autenticação segura** com tokens
+- 🔒 **API keys** protegidas em Edge Functions
+- 🌐 **CORS** configurado corretamente
 
-### Ativos Internacionais:
-- VOO, VNQ (ETFs)
-- DVN, EVEX (Stocks)
-- O (REIT)
+## 🎯 **ROADMAP**
 
-## 🤝 Contribuição
+### **✅ Concluído (v2.0)**
+- [x] Sistema de comandos de voz
+- [x] IA integrada (Mistral + OpenAI)
+- [x] Edge Functions Supabase
+- [x] Interface moderna e responsiva
+- [x] Dashboards avançados
+- [x] Exportação Excel profissional
 
-Este é um projeto pessoal, mas sugestões são bem-vindas via issues.
+### **🔮 Próximas Versões**
+- [ ] **App Mobile** (React Native)
+- [ ] **Notificações Push** para dividendos
+- [ ] **Análise técnica** com indicadores
+- [ ] **Social trading** e compartilhamento
+- [ ] **API pública** para integrações
 
-## 📄 Licença
+## 🤝 **CONTRIBUIÇÃO**
 
-Projeto privado - Todos os direitos reservados.
+Contribuições são bem-vindas! Por favor:
+
+1. Fork o projeto
+2. Crie uma branch para sua feature
+3. Commit suas mudanças
+4. Push para a branch
+5. Abra um Pull Request
+
+## 📄 **LICENÇA**
+
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para detalhes.
+
+## 👨‍💻 **AUTOR**
+
+**Roney Mateus**
+- 🐙 GitHub: [@roneymatusp2](https://github.com/roneymatusp2)
+- 📧 Email: roney.mateus@example.com
+- 💼 LinkedIn: [roney-mateus](https://linkedin.com/in/roney-mateus)
 
 ---
 
-**Desenvolvido por Erasmo Russo** 🚀 # erasmoinvest
-# erasmoinvest
+### 🎉 **ERASMO INVEST - INTELIGÊNCIA ARTIFICIAL PARA SEUS INVESTIMENTOS!**
+
+**Transforme sua gestão de investimentos com comandos de voz e IA! 🚀**

@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Mic, MicOff, Volume2, Brain, Sparkles, HelpCircle, Type } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { VoiceCommandService, VoiceCommandResult } from '../services/voiceCommandService';
+import { voiceService } from '../services/voiceCommandService';
+import { VoiceCommandResult, VoiceCommandCallbacks } from '../services/types';
 import VoiceCommandHelp from './VoiceCommandHelp';
 import { TextCommandInput } from './TextCommandInput';
 
@@ -18,8 +19,7 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
   const [isSupported, setIsSupported] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
-  const voiceServiceRef = useRef<VoiceCommandService | null>(null);
-  const isInitializingRef = useRef(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Verificar se o navegador suporta as APIs necessárias
@@ -42,57 +42,41 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
 
     // Limpar ao desmontar
     return () => {
-      if (voiceServiceRef.current) {
-        voiceServiceRef.current.cleanup();
-      }
+      voiceService.cleanup();
     };
   }, []);
 
-  const initializeVoiceService = async () => {
-    if (isInitializingRef.current) {
-      console.log('Já está inicializando, aguardando...');
-      return;
-    }
-
-    if (!voiceServiceRef.current) {
-      isInitializingRef.current = true;
-      
-      try {
-        voiceServiceRef.current = new VoiceCommandService({
-          onRecordingStateChange: (recording) => {
-            setIsRecording(recording);
-            if (!recording) {
-              setIsProcessing(true);
-            }
-          },
-          onTranscriptionUpdate: (text) => {
-            setTranscription(text);
-            setIsProcessing(false);
-          },
-          onCommandResult: (result: VoiceCommandResult) => {
-            console.log('Comando processado:', result);
-            setCommandResult(result.confirmation || 'Comando processado');
-          },
-          onExecutionResult: (result: string) => {
-            console.log('Resultado da execução:', result);
-            setCommandResult(result);
-          },
-          onAudioStart: () => {
-            setIsPlayingAudio(true);
-          },
-          onAudioEnd: () => {
-            setIsPlayingAudio(false);
-          }
-        });
-
-        await voiceServiceRef.current.initializeRecording();
-      } catch (error) {
-        console.error('Erro ao inicializar serviço de voz:', error);
-        voiceServiceRef.current = null;
-        throw error;
-      } finally {
-        isInitializingRef.current = false;
-      }
+  // Callbacks para o voice service
+  const callbacks: VoiceCommandCallbacks = {
+    onRecordingStart: () => {
+      setIsRecording(true);
+      setError(null);
+      setTranscription('');
+      setCommandResult('');
+    },
+    onRecordingStop: () => {
+      setIsRecording(false);
+      setIsProcessing(true);
+    },
+    onTranscriptionUpdate: (text) => {
+      setTranscription(text);
+      setIsProcessing(false);
+    },
+    onCommandResult: (result: VoiceCommandResult) => {
+      console.log('Comando processado:', result);
+      setCommandResult(result.message || result.confirmation || 'Comando processado');
+      setIsProcessing(false);
+    },
+    onAudioStart: () => {
+      setIsPlayingAudio(true);
+    },
+    onAudioEnd: () => {
+      setIsPlayingAudio(false);
+    },
+    onError: (errorMessage) => {
+      setError(errorMessage);
+      setIsRecording(false);
+      setIsProcessing(false);
     }
   };
 
@@ -108,32 +92,29 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
     }
 
     try {
-      await initializeVoiceService();
-      if (voiceServiceRef.current) {
-        await voiceServiceRef.current.startRecording();
-        setTranscription('');
-      }
+      await voiceService.startRecording(callbacks);
     } catch (error) {
       console.error('Erro ao iniciar gravação:', error);
+      setError('Erro ao iniciar gravação');
     }
   };
 
-  const handleMouseUp = () => {
-    if (voiceServiceRef.current && isRecording) {
-      voiceServiceRef.current.stopRecording();
+  const handleMouseUp = async () => {
+    if (isRecording) {
+      await voiceService.stopRecording();
     }
   };
 
-  const handleMouseLeave = () => {
+  const handleMouseLeave = async () => {
     // Parar gravação se o mouse sair do botão
-    if (voiceServiceRef.current && isRecording) {
-      voiceServiceRef.current.stopRecording();
+    if (isRecording) {
+      await voiceService.stopRecording();
     }
   };
 
   const handleTextCommandSuccess = (result: VoiceCommandResult) => {
     console.log('Comando de texto processado:', result);
-    setCommandResult(result.confirmation || 'Comando processado');
+    setCommandResult(result.message || result.confirmation || 'Comando processado');
     
     // Limpar resultado após 8 segundos
     setTimeout(() => {
@@ -164,6 +145,17 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
     }
   }, [transcription, isProcessing]);
 
+  // Limpar erro após 5 segundos
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError(null);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
   if (!isSupported) {
     return (
       <div className={`inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-gray-400 rounded-xl cursor-not-allowed ${className}`}>
@@ -190,6 +182,8 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
               ? 'bg-gradient-to-r from-red-500 to-pink-500 shadow-xl shadow-red-500/25' 
               : isProcessing
               ? 'bg-gradient-to-r from-blue-500 to-purple-500 shadow-xl shadow-blue-500/25'
+              : error
+              ? 'bg-gradient-to-r from-red-600 to-red-700 shadow-xl shadow-red-500/25'
               : 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30'
             }
             transform hover:scale-105 active:scale-95
@@ -223,6 +217,16 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
                   className="flex items-center"
                 >
                   <Brain className="w-5 h-5 animate-spin" />
+                </motion.div>
+              ) : error ? (
+                <motion.div
+                  key="error"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  exit={{ scale: 0, rotate: 180 }}
+                  className="flex items-center"
+                >
+                  <MicOff className="w-5 h-5" />
                 </motion.div>
               ) : (
                 <motion.div
@@ -261,6 +265,16 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
                 >
                   Processando com IA...
                 </motion.span>
+              ) : error ? (
+                <motion.span
+                  key="error-text"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="text-sm font-bold"
+                >
+                  Erro - Tente novamente
+                </motion.span>
               ) : (
                 <motion.span
                   key="idle-text"
@@ -276,7 +290,7 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
           </div>
 
           {/* Sparkles para efeito visual */}
-          {!isRecording && !isProcessing && (
+          {!isRecording && !isProcessing && !error && (
             <Sparkles className="w-4 h-4 text-white/70 relative z-10" />
           )}
 
@@ -325,15 +339,28 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
 
         {/* Indicador de transcrição e resposta */}
         <AnimatePresence>
-          {(transcription || commandResult) && (
+          {(transcription || commandResult || error) && (
             <motion.div
               initial={{ opacity: 0, y: 10, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.9 }}
-              className="absolute top-full mt-2 left-0 right-0 bg-slate-800/90 border border-slate-600/50 rounded-xl p-4 backdrop-blur-sm min-w-[400px]"
+              className="absolute top-full mt-2 left-0 right-0 bg-slate-800/90 border border-slate-600/50 rounded-xl p-4 backdrop-blur-sm min-w-[400px] z-50"
             >
+              {/* Erro */}
+              {error && (
+                <div className="mb-3">
+                  <div className="text-xs text-red-400 mb-1 flex items-center gap-2">
+                    <MicOff className="w-3 h-3" />
+                    Erro:
+                  </div>
+                  <div className="text-sm text-red-300 bg-red-900/20 border border-red-500/30 rounded-lg p-2">
+                    {error}
+                  </div>
+                </div>
+              )}
+
               {/* Transcrição */}
-              {transcription && (
+              {transcription && !error && (
                 <div className="mb-3">
                   <div className="text-xs text-slate-400 mb-1 flex items-center gap-2">
                     <Mic className="w-3 h-3" />
@@ -346,7 +373,7 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
               )}
 
               {/* Resposta do Sistema */}
-              {commandResult && (
+              {commandResult && !error && (
                 <div>
                   <div className="text-xs text-slate-400 mb-1 flex items-center gap-2">
                     <Brain className="w-3 h-3" />
