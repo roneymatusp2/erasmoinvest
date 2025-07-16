@@ -13,6 +13,8 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcription, setTranscription] = useState('');
+  const [commandResult, setCommandResult] = useState<string>('');
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
@@ -69,6 +71,17 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
           },
           onCommandResult: (result: VoiceCommandResult) => {
             console.log('Comando processado:', result);
+            setCommandResult(result.confirmation || 'Comando processado');
+          },
+          onExecutionResult: (result: string) => {
+            console.log('Resultado da execução:', result);
+            setCommandResult(result);
+          },
+          onAudioStart: () => {
+            setIsPlayingAudio(true);
+          },
+          onAudioEnd: () => {
+            setIsPlayingAudio(false);
           }
         });
 
@@ -120,8 +133,36 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
 
   const handleTextCommandSuccess = (result: VoiceCommandResult) => {
     console.log('Comando de texto processado:', result);
-    // Atualizar interface se necessário
+    setCommandResult(result.confirmation || 'Comando processado');
+    
+    // Limpar resultado após 8 segundos
+    setTimeout(() => {
+      setCommandResult('');
+    }, 8000);
   };
+
+  // Limpar resultado da transcrição e resposta quando necessário
+  useEffect(() => {
+    if (commandResult) {
+      // Limpar resultado após 10 segundos
+      const timer = setTimeout(() => {
+        setCommandResult('');
+      }, 10000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [commandResult]);
+
+  useEffect(() => {
+    if (transcription && !isProcessing) {
+      // Limpar transcrição após 3 segundos quando não está processando
+      const timer = setTimeout(() => {
+        setTranscription('');
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [transcription, isProcessing]);
 
   if (!isSupported) {
     return (
@@ -282,17 +323,41 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
           <span className="text-sm">Ajuda</span>
         </motion.button>
 
-        {/* Indicador de transcrição */}
+        {/* Indicador de transcrição e resposta */}
         <AnimatePresence>
-          {transcription && (
+          {(transcription || commandResult) && (
             <motion.div
               initial={{ opacity: 0, y: 10, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.9 }}
-              className="absolute top-full mt-2 left-0 right-0 bg-slate-800/90 border border-slate-600/50 rounded-xl p-3 backdrop-blur-sm"
+              className="absolute top-full mt-2 left-0 right-0 bg-slate-800/90 border border-slate-600/50 rounded-xl p-4 backdrop-blur-sm min-w-[400px]"
             >
-              <div className="text-xs text-slate-400 mb-1">Transcrição:</div>
-              <div className="text-sm text-white">{transcription}</div>
+              {/* Transcrição */}
+              {transcription && (
+                <div className="mb-3">
+                  <div className="text-xs text-slate-400 mb-1 flex items-center gap-2">
+                    <Mic className="w-3 h-3" />
+                    Você disse:
+                  </div>
+                  <div className="text-sm text-white bg-slate-700/50 rounded-lg p-2">
+                    "{transcription}"
+                  </div>
+                </div>
+              )}
+
+              {/* Resposta do Sistema */}
+              {commandResult && (
+                <div>
+                  <div className="text-xs text-slate-400 mb-1 flex items-center gap-2">
+                    <Brain className="w-3 h-3" />
+                    {isPlayingAudio && <Volume2 className="w-3 h-3 animate-pulse text-green-400" />}
+                    Erasmo Invest:
+                  </div>
+                  <div className="text-sm text-green-300 bg-green-900/20 border border-green-500/30 rounded-lg p-2">
+                    {commandResult}
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

@@ -35,15 +35,24 @@ export class VoiceCommandService {
   private onRecordingStateChange?: (isRecording: boolean) => void;
   private onTranscriptionUpdate?: (text: string) => void;
   private onCommandResult?: (result: VoiceCommandResult) => void;
+  private onExecutionResult?: (result: string) => void;
+  private onAudioStart?: () => void;
+  private onAudioEnd?: () => void;
 
   constructor(callbacks?: {
     onRecordingStateChange?: (isRecording: boolean) => void;
     onTranscriptionUpdate?: (text: string) => void;
     onCommandResult?: (result: VoiceCommandResult) => void;
+    onExecutionResult?: (result: string) => void;
+    onAudioStart?: () => void;
+    onAudioEnd?: () => void;
   }) {
     this.onRecordingStateChange = callbacks?.onRecordingStateChange;
     this.onTranscriptionUpdate = callbacks?.onTranscriptionUpdate;
     this.onCommandResult = callbacks?.onCommandResult;
+    this.onExecutionResult = callbacks?.onExecutionResult;
+    this.onAudioStart = callbacks?.onAudioStart;
+    this.onAudioEnd = callbacks?.onAudioEnd;
   }
 
   async initializeRecording(): Promise<void> {
@@ -218,13 +227,15 @@ export class VoiceCommandService {
       this.onCommandResult?.(commandResult.result);
 
       // Executar comando se necessário
-      if (commandResult.result.action === 'add_investment') {
+      if (commandResult.result.action === 'add_investment' || 
+          commandResult.result.action === 'consult_portfolio') {
         await this.executeCommand(commandResult.result);
-      }
-
-      // Gerar resposta em áudio (TTS)
-      if (commandResult.result.confirmation) {
-        await this.generateSpeech(commandResult.result.confirmation);
+      } else {
+        // Para comandos que não precisam execução, gerar resposta de confirmação
+        if (commandResult.result.confirmation) {
+          await this.generateSpeech(commandResult.result.confirmation);
+          toast.success(commandResult.result.confirmation, { duration: 5000 });
+        }
       }
 
       return commandResult.result;
@@ -268,17 +279,16 @@ export class VoiceCommandService {
       this.onCommandResult?.(commandResult.result);
 
       // 3. Executar comando se necessário
-      if (commandResult.result.action === 'add_investment') {
+      if (commandResult.result.action === 'add_investment' || 
+          commandResult.result.action === 'consult_portfolio') {
         await this.executeCommand(commandResult.result);
+      } else {
+        // Para comandos que não precisam execução, gerar resposta de confirmação
+        if (commandResult.result.confirmation) {
+          await this.generateSpeech(commandResult.result.confirmation);
+          toast.success(commandResult.result.confirmation, { duration: 5000 });
+        }
       }
-
-      // 4. Gerar resposta em áudio (TTS)
-      if (commandResult.result.confirmation) {
-        await this.generateSpeech(commandResult.result.confirmation);
-      }
-
-      // Mostrar confirmação
-      toast.success(commandResult.result.confirmation, { duration: 5000 });
 
     } catch (error) {
       console.error('Erro no processamento completo:', error);
@@ -408,6 +418,18 @@ export class VoiceCommandService {
 
       console.log('Comando executado com sucesso:', result);
       
+      // Mostrar resultado da execução
+      if (result.result && result.result.response) {
+        // Enviar resultado para o componente
+        this.onExecutionResult?.(result.result.response);
+        
+        // Gerar fala com a resposta da execução
+        this.generateSpeech(result.result.response);
+        
+        // Mostrar toast com a resposta
+        toast.success(result.result.response, { duration: 6000 });
+      }
+      
       // Recarregar página para mostrar novo investimento
       if (commandResult.action === 'add_investment') {
         setTimeout(() => {
@@ -437,50 +459,50 @@ export class VoiceCommandService {
     try {
       console.log('Gerando fala para:', text);
 
-      const response = await fetch('https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/generate-speech', {
+      const response = await fetch('https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/text-to-speech', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(import.meta as any).env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify({
           text: text,
-          voice: 'alloy',
-          model: 'tts-1'
+          voice: 'alloy'
         })
       });
 
       if (!response.ok) {
-        console.warn('Erro no TTS, continuando sem áudio:', response.status);
+        console.error('Erro no TTS (continuando sem áudio):', await response.text());
         return;
       }
 
       const result = await response.json();
       
-      if (result.success && result.audioBase64) {
-        // Converter base64 para blob e reproduzir
-        const audioData = atob(result.audioBase64);
-        const audioArray = new Uint8Array(audioData.length);
-        for (let i = 0; i < audioData.length; i++) {
-          audioArray[i] = audioData.charCodeAt(i);
-        }
+      if (result.success && result.audioOutput) {
+        // O audioOutput já vem como data URL (data:audio/mp3;base64,...)
+        const audio = new Audio(result.audioOutput);
         
-        const audioBlob = new Blob([audioArray], { type: 'audio/mpeg' });
-        const audioUrl = URL.createObjectURL(audioBlob);
+        // Callbacks para início e fim do áudio
+        audio.addEventListener('play', () => {
+          this.onAudioStart?.();
+        });
         
-        const audio = new Audio(audioUrl);
+        audio.addEventListener('ended', () => {
+          this.onAudioEnd?.();
+        });
+        
+        audio.addEventListener('error', () => {
+          this.onAudioEnd?.();
+        });
+        
         audio.play().catch(error => {
           console.warn('Erro ao reproduzir áudio:', error);
-        });
-
-        // Limpar URL após reprodução
-        audio.addEventListener('ended', () => {
-          URL.revokeObjectURL(audioUrl);
+          this.onAudioEnd?.();
         });
       }
 
     } catch (error) {
-      console.warn('Erro no TTS (continuando sem áudio):', error);
+      console.error('Erro no TTS (continuando sem áudio):', error);
     }
   }
 
