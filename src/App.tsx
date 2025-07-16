@@ -64,7 +64,7 @@ function App() {
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
   const [showHorizontal, setShowHorizontal] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(true);
-  const [useLocalData, setUseLocalData] = useState<boolean>(false); // Tentar Supabase primeiro
+  const [useLocalData, setUseLocalData] = useState<boolean>(true); // FORÇAR DADOS LOCAIS
   
   // Estados dos modais
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
@@ -87,8 +87,8 @@ function App() {
       
       setLoading(true);
       
-      // Tentar carregar do Supabase primeiro
-      if (portfolioService && !useLocalData) {
+      // DESABILITADO: Tentar carregar do Supabase primeiro
+      if (false && portfolioService && !useLocalData) {
         try {
           console.log('🔄 === FORÇANDO NOVA CARGA SUPABASE ===');
           
@@ -899,7 +899,7 @@ function App() {
           setShowEditModal(false);
           setEditingInvestment(null);
         }}
-        investment={editingInvestment}
+        investment={editingInvestment as any}
         metadata={portfolios.find(p => p.ticker === activeTab)?.metadata ? {
           ...portfolios.find(p => p.ticker === activeTab)!.metadata!,
           id: activeTab,
