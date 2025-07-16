@@ -1,0 +1,185 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
+:root {
+  --glass-bg: rgba(15, 23, 42, 0.4);
+  --glass-border: rgba(71, 85, 105, 0.5);
+  --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  --blue-glow: 0 0 15px rgba(59, 130, 246, 0.4);
+}
+
+html {
+  @apply text-white;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-slate-900 text-white;
+  overflow-x: hidden;
+}
+
+.tab-scroll-container {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--blue-500) var(--bg-medium);
+  white-space: nowrap;
+  padding-bottom: 5px;
+  scroll-behavior: smooth;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-800/50 rounded;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-600 rounded transition-colors;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-500;
+}
+
+.animate-fadeIn {
+  animation: fadeInUp 0.5s ease-out;
+}
+.animate-slideIn {
+  animation: slideInRight 0.5s ease-out;
+}
+
+/* Glass Effect Classes */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.card {
+  @apply bg-slate-800/40 backdrop-blur-sm border border-slate-700/50 rounded-xl shadow-lg;
+}
+
+.hover-lift {
+  @apply transition-all duration-300;
+}
+
+.tab-button {
+  @apply py-2 px-4 rounded-lg font-medium transition-colors text-center;
+}
+.tab-button.active {
+  @apply bg-blue-600 text-white shadow-lg animation-pulse;
+}
+
+.hover-lift:hover {
+  @apply transform -translate-y-1 shadow-xl;
+  box-shadow: var(--blue-glow);
+}
+
+/* Table */
+.table-container {
+  @apply overflow-x-auto bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-xl shadow-lg;
+}
+
+table {
+  @apply w-full;
+}
+
+th {
+  @apply px-4 py-3 font-semibold text-left text-slate-300 bg-slate-800/60;
+}
+
+td {
+  @apply px-4 py-2 border-t border-slate-700/30;
+}
+
+tr:hover td {
+  @apply bg-slate-800/50;
+}
+
+/* Form Controls */
+input, select, textarea {
+  @apply bg-slate-700 border border-slate-600 rounded text-white placeholder:text-slate-400;
+}
+
+input:focus, select:focus, textarea:focus {
+  @apply outline-none border-blue-500 ring-1 ring-blue-500;
+}
+
+/* Buttons */
+.btn {
+  @apply px-4 py-2 rounded-lg flex items-center space-x-2 font-medium transition-colors;
+}
+
+.btn-primary {
+  @apply bg-blue-600 hover:bg-blue-700 text-white;
+}
+
+.btn-success {
+  @apply bg-green-600 hover:bg-green-700 text-white;
+}
+
+.btn-danger {
+  @apply bg-red-600 hover:bg-red-700 text-white;
+}
+
+.btn-warning {
+  @apply bg-amber-600 hover:bg-amber-700 text-white;
+}
+
+.btn-secondary {
+  @apply bg-slate-600 hover:bg-slate-700 text-white;
+}
+.ticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.animation-pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Mais classes utilitárias */
