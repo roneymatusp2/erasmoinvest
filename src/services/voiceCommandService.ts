@@ -1,4 +1,9 @@
-import toast from 'react-hot-toast';
+// Função simples para mostrar mensagens (substitui react-hot-toast)
+const toast = {
+  success: (message: string, options?: any) => console.log('✅', message),
+  error: (message: string) => console.error('❌', message),
+  loading: (message: string, options?: any) => console.log('⏳', message)
+};
 
 export interface VoiceCommandResult {
   action: string;
@@ -26,6 +31,7 @@ export class VoiceCommandService {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private isRecording = false;
+  private stream: MediaStream | null = null;
   private onRecordingStateChange?: (isRecording: boolean) => void;
   private onTranscriptionUpdate?: (text: string) => void;
   private onCommandResult?: (result: VoiceCommandResult) => void;
@@ -42,15 +48,18 @@ export class VoiceCommandService {
 
   async initializeRecording(): Promise<void> {
     try {
+      // Limpar qualquer stream anterior
+      this.cleanup();
+
       // Solicitar permissão para microfone com configurações otimizadas
-      const stream = await navigator.mediaDevices.getUserMedia({
+      this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: 44100,
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          volume: 1.0
+
         }
       });
 
@@ -70,7 +79,7 @@ export class VoiceCommandService {
 
       console.log('Usando formato de áudio:', mimeType);
 
-      this.mediaRecorder = new MediaRecorder(stream, {
+      this.mediaRecorder = new MediaRecorder(this.stream, {
         mimeType: mimeType,
         audioBitsPerSecond: 128000
       });
@@ -115,6 +124,8 @@ export class VoiceCommandService {
 
       this.mediaRecorder.onstart = () => {
         console.log('MediaRecorder iniciado');
+        this.isRecording = true;
+        this.onRecordingStateChange?.(true);
       };
 
       console.log('MediaRecorder inicializado com sucesso');
@@ -132,36 +143,103 @@ export class VoiceCommandService {
     }
   }
 
-  startRecording(): void {
-    if (this.mediaRecorder && this.mediaRecorder.state === 'inactive') {
-      this.audioChunks = [];
-      // Usar timeslice menor para capturar áudio mais consistentemente
-      this.mediaRecorder.start(250); // Capturar chunks a cada 250ms
-      this.isRecording = true;
-      this.onRecordingStateChange?.(true);
-      
-      console.log('Gravação iniciada...');
-      toast.success('🎤 Gravação iniciada - fale seu comando!');
-    } else {
-      console.warn('MediaRecorder não está pronto para gravar. Estado:', this.mediaRecorder?.state);
-      toast.error('Erro: MediaRecorder não está pronto. Tente novamente.');
+  async startRecording(): Promise<void> {
+    try {
+      // Se já está gravando, não fazer nada
+      if (this.isRecording) {
+        console.log('Já está gravando, ignorando comando start');
+        return;
+      }
+
+      // Se não há MediaRecorder ou está em estado inválido, reinicializar
+      if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
+        await this.initializeRecording();
+      }
+
+      // Verificar se o MediaRecorder está pronto
+      if (this.mediaRecorder && this.mediaRecorder.state === 'inactive') {
+        this.audioChunks = [];
+        // Usar timeslice menor para capturar áudio mais consistentemente
+        this.mediaRecorder.start(250); // Capturar chunks a cada 250ms
+        
+        console.log('Gravação iniciada...');
+        toast.success('🎤 Gravação iniciada - fale seu comando!');
+      } else {
+        console.warn('MediaRecorder não está pronto para gravar. Estado:', this.mediaRecorder?.state);
+        toast.error('Erro: MediaRecorder não está pronto. Tente novamente.');
+      }
+    } catch (error) {
+      console.error('Erro ao iniciar gravação:', error);
+      toast.error('Erro ao iniciar gravação: ' + (error as Error).message);
     }
   }
 
   stopRecording(): void {
-    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-      this.mediaRecorder.stop();
+    try {
+      if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+        this.mediaRecorder.stop();
+        this.isRecording = false;
+        this.onRecordingStateChange?.(false);
+        
+        console.log('Gravação finalizada...');
+        toast.loading('🔄 Processando comando de voz...', { duration: 2000 });
+
+        // Parar todas as tracks do stream para liberar o microfone
+        if (this.stream) {
+          this.stream.getTracks().forEach(track => track.stop());
+          this.stream = null;
+        }
+      } else {
+        console.warn('MediaRecorder não está gravando. Estado:', this.mediaRecorder?.state);
+        this.isRecording = false;
+        this.onRecordingStateChange?.(false);
+      }
+    } catch (error) {
+      console.error('Erro ao parar gravação:', error);
       this.isRecording = false;
       this.onRecordingStateChange?.(false);
-      
-      console.log('Gravação finalizada...');
-      toast.loading('🔄 Processando comando de voz...', { duration: 2000 });
+    }
+  }
 
-      // Parar todas as tracks do stream para liberar o microfone
-      this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
-    } else {
-      console.warn('MediaRecorder não está gravando. Estado:', this.mediaRecorder?.state);
-      toast.error('Erro: MediaRecorder não está gravando.');
+  // Nova função para processar comandos de texto
+  async processTextCommand(text: string): Promise<VoiceCommandResult> {
+    try {
+      console.log('Processando comando de texto:', text);
+      this.onTranscriptionUpdate?.(text);
+
+      // Processar comando com Mistral
+      const commandResult = await this.processCommand(text);
+      
+      if (!commandResult.success) {
+        throw new Error(commandResult.error || 'Falha no processamento do comando');
+      }
+
+      console.log('Resultado do comando:', commandResult.result);
+      this.onCommandResult?.(commandResult.result);
+
+      // Executar comando se necessário
+      if (commandResult.result.action === 'add_investment') {
+        await this.executeCommand(commandResult.result);
+      }
+
+      // Gerar resposta em áudio (TTS)
+      if (commandResult.result.confirmation) {
+        await this.generateSpeech(commandResult.result.confirmation);
+      }
+
+      return commandResult.result;
+
+    } catch (error) {
+      console.error('Erro no processamento de texto:', error);
+      const errorResult: VoiceCommandResult = {
+        action: 'error',
+        data: {},
+        confidence: 0,
+        confirmation: 'Erro ao processar comando: ' + (error as Error).message
+      };
+      
+      toast.error(errorResult.confirmation);
+      return errorResult;
     }
   }
 
@@ -192,6 +270,11 @@ export class VoiceCommandService {
       // 3. Executar comando se necessário
       if (commandResult.result.action === 'add_investment') {
         await this.executeCommand(commandResult.result);
+      }
+
+      // 4. Gerar resposta em áudio (TTS)
+      if (commandResult.result.confirmation) {
+        await this.generateSpeech(commandResult.result.confirmation);
       }
 
       // Mostrar confirmação
@@ -349,15 +432,75 @@ export class VoiceCommandService {
     }
   }
 
+  // Nova função para gerar fala (TTS)
+  private async generateSpeech(text: string): Promise<void> {
+    try {
+      console.log('Gerando fala para:', text);
+
+      const response = await fetch('https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/generate-speech', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(import.meta as any).env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          text: text,
+          voice: 'alloy',
+          model: 'tts-1'
+        })
+      });
+
+      if (!response.ok) {
+        console.warn('Erro no TTS, continuando sem áudio:', response.status);
+        return;
+      }
+
+      const result = await response.json();
+      
+      if (result.success && result.audioBase64) {
+        // Converter base64 para blob e reproduzir
+        const audioData = atob(result.audioBase64);
+        const audioArray = new Uint8Array(audioData.length);
+        for (let i = 0; i < audioData.length; i++) {
+          audioArray[i] = audioData.charCodeAt(i);
+        }
+        
+        const audioBlob = new Blob([audioArray], { type: 'audio/mpeg' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        const audio = new Audio(audioUrl);
+        audio.play().catch(error => {
+          console.warn('Erro ao reproduzir áudio:', error);
+        });
+
+        // Limpar URL após reprodução
+        audio.addEventListener('ended', () => {
+          URL.revokeObjectURL(audioUrl);
+        });
+      }
+
+    } catch (error) {
+      console.warn('Erro no TTS (continuando sem áudio):', error);
+    }
+  }
+
   getIsRecording(): boolean {
     return this.isRecording;
   }
 
   cleanup(): void {
     if (this.mediaRecorder) {
-      this.mediaRecorder.stream?.getTracks().forEach(track => track.stop());
+      if (this.mediaRecorder.state === 'recording') {
+        this.mediaRecorder.stop();
+      }
       this.mediaRecorder = null;
     }
+    
+    if (this.stream) {
+      this.stream.getTracks().forEach(track => track.stop());
+      this.stream = null;
+    }
+    
     this.audioChunks = [];
     this.isRecording = false;
   }

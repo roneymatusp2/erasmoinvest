@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Volume2, Brain, Sparkles, HelpCircle } from 'lucide-react';
+import { Mic, MicOff, Volume2, Brain, Sparkles, HelpCircle, Type } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { VoiceCommandService, VoiceCommandResult } from '../services/voiceCommandService';
 import VoiceCommandHelp from './VoiceCommandHelp';
-import toast from 'react-hot-toast';
+import { TextCommandInput } from './TextCommandInput';
 
 interface VoiceCommandButtonProps {
   className?: string;
@@ -15,7 +15,9 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
   const [transcription, setTranscription] = useState('');
   const [isSupported, setIsSupported] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  const [showTextInput, setShowTextInput] = useState(false);
   const voiceServiceRef = useRef<VoiceCommandService | null>(null);
+  const isInitializingRef = useRef(false);
 
   useEffect(() => {
     // Verificar se o navegador suporta as APIs necessárias
@@ -45,44 +47,59 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
   }, []);
 
   const initializeVoiceService = async () => {
-    if (!voiceServiceRef.current) {
-      voiceServiceRef.current = new VoiceCommandService({
-        onRecordingStateChange: (recording) => {
-          setIsRecording(recording);
-          if (!recording) {
-            setIsProcessing(true);
-          }
-        },
-        onTranscriptionUpdate: (text) => {
-          setTranscription(text);
-          setIsProcessing(false);
-        },
-        onCommandResult: (result: VoiceCommandResult) => {
-          console.log('Comando processado:', result);
-        }
-      });
+    if (isInitializingRef.current) {
+      console.log('Já está inicializando, aguardando...');
+      return;
+    }
 
+    if (!voiceServiceRef.current) {
+      isInitializingRef.current = true;
+      
       try {
+        voiceServiceRef.current = new VoiceCommandService({
+          onRecordingStateChange: (recording) => {
+            setIsRecording(recording);
+            if (!recording) {
+              setIsProcessing(true);
+            }
+          },
+          onTranscriptionUpdate: (text) => {
+            setTranscription(text);
+            setIsProcessing(false);
+          },
+          onCommandResult: (result: VoiceCommandResult) => {
+            console.log('Comando processado:', result);
+          }
+        });
+
         await voiceServiceRef.current.initializeRecording();
       } catch (error) {
         console.error('Erro ao inicializar serviço de voz:', error);
-        toast.error((error as Error).message);
         voiceServiceRef.current = null;
         throw error;
+      } finally {
+        isInitializingRef.current = false;
       }
     }
   };
 
   const handleMouseDown = async () => {
     if (!isSupported) {
-      toast.error('Comandos de voz não suportados neste navegador');
+      console.log('Comandos de voz não suportados neste navegador');
+      return;
+    }
+
+    if (isRecording) {
+      console.log('Já está gravando, ignorando...');
       return;
     }
 
     try {
       await initializeVoiceService();
-      voiceServiceRef.current?.startRecording();
-      setTranscription('');
+      if (voiceServiceRef.current) {
+        await voiceServiceRef.current.startRecording();
+        setTranscription('');
+      }
     } catch (error) {
       console.error('Erro ao iniciar gravação:', error);
     }
@@ -101,6 +118,11 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
     }
   };
 
+  const handleTextCommandSuccess = (result: VoiceCommandResult) => {
+    console.log('Comando de texto processado:', result);
+    // Atualizar interface se necessário
+  };
+
   if (!isSupported) {
     return (
       <div className={`inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-gray-400 rounded-xl cursor-not-allowed ${className}`}>
@@ -112,8 +134,8 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
 
   return (
     <>
-      <div className={`relative flex items-center gap-2 ${className}`}>
-        {/* Botão Principal */}
+      <div className={`relative flex items-center gap-3 ${className}`}>
+        {/* Botão Principal de Voz */}
         <motion.button
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
@@ -240,6 +262,26 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
           )}
         </motion.button>
 
+        {/* Botão de Comando de Texto */}
+        <motion.button
+          onClick={() => setShowTextInput(true)}
+          className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl font-medium transition-all duration-300 hover:scale-105 transform shadow-lg shadow-blue-500/25"
+          whileTap={{ scale: 0.95 }}
+        >
+          <Type className="w-4 h-4" />
+          <span className="text-sm">Texto</span>
+        </motion.button>
+
+        {/* Botão de Ajuda */}
+        <motion.button
+          onClick={() => setShowHelp(true)}
+          className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-500 hover:to-gray-600 text-white rounded-xl font-medium transition-all duration-300 hover:scale-105 transform shadow-lg"
+          whileTap={{ scale: 0.95 }}
+        >
+          <HelpCircle className="w-4 h-4" />
+          <span className="text-sm">Ajuda</span>
+        </motion.button>
+
         {/* Indicador de transcrição */}
         <AnimatePresence>
           {transcription && (
@@ -259,19 +301,20 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
         <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-slate-900/90 text-white text-xs px-3 py-1 rounded-lg opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap">
           Pressione e segure para gravar comando
         </div>
-
-        {/* Botão de Ajuda */}
-        <button
-          onClick={() => setShowHelp(true)}
-          className="p-2 bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600/50 rounded-xl transition-all duration-300 hover:scale-105"
-          title="Ver comandos disponíveis"
-        >
-          <HelpCircle className="w-5 h-5 text-slate-400 hover:text-white transition-colors" />
-        </button>
       </div>
 
       {/* Modal de Ajuda */}
-      <VoiceCommandHelp isOpen={showHelp} onClose={() => setShowHelp(false)} />
+      <VoiceCommandHelp 
+        isOpen={showHelp} 
+        onClose={() => setShowHelp(false)} 
+      />
+
+      {/* Modal de Comando de Texto */}
+      <TextCommandInput
+        isVisible={showTextInput}
+        onClose={() => setShowTextInput(false)}
+        onSuccess={handleTextCommandSuccess}
+      />
     </>
   );
 } 
