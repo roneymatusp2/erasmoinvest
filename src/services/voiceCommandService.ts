@@ -229,11 +229,11 @@ export class VoiceCommandService {
       // Executar comando se necessário
       if (commandResult.result.action === 'add_investment' || 
           commandResult.result.action === 'consult_portfolio') {
-        await this.executeCommand(commandResult.result);
+        await this.executeCommand(commandResult.result, false); // false = não é comando de voz
       } else {
-        // Para comandos que não precisam execução, gerar resposta de confirmação
+        // Para comandos que não precisam execução, NÃO gerar áudio para texto
         if (commandResult.result.confirmation) {
-          await this.generateSpeech(commandResult.result.confirmation);
+          // Só mostrar toast, sem áudio
           toast.success(commandResult.result.confirmation, { duration: 5000 });
         }
       }
@@ -281,7 +281,7 @@ export class VoiceCommandService {
       // 3. Executar comando se necessário
       if (commandResult.result.action === 'add_investment' || 
           commandResult.result.action === 'consult_portfolio') {
-        await this.executeCommand(commandResult.result);
+        await this.executeCommand(commandResult.result, true); // true = comando de voz
       } else {
         // Para comandos que não precisam execução, gerar resposta de confirmação
         if (commandResult.result.confirmation) {
@@ -389,7 +389,7 @@ export class VoiceCommandService {
     }
   }
 
-  private async executeCommand(commandResult: VoiceCommandResult): Promise<ExecutionResult> {
+  private async executeCommand(commandResult: VoiceCommandResult, enableAudio: boolean = true): Promise<ExecutionResult> {
     try {
       console.log('Executando comando:', commandResult);
 
@@ -423,8 +423,10 @@ export class VoiceCommandService {
         // Enviar resultado para o componente
         this.onExecutionResult?.(result.result.response);
         
-        // Gerar fala com a resposta da execução
-        this.generateSpeech(result.result.response);
+        // Gerar fala APENAS se for comando de voz
+        if (enableAudio) {
+          this.generateSpeech(result.result.response);
+        }
         
         // Mostrar toast com a resposta
         toast.success(result.result.response, { duration: 6000 });
