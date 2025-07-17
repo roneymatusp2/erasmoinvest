@@ -44,6 +44,7 @@ import DashboardTab from './components/DashboardTab';
 import PortfolioTab from './components/PortfolioTab';
 import SettingsTab from './components/SettingsTab';
 import { Portfolio } from './types/investment';
+import { Investment } from './types/investment';
 
 function App() {
   // Debug das variáveis de ambiente
@@ -70,7 +71,7 @@ function App() {
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [showEditModal, setShowEditModal] = useState<boolean>(false);
   const [showNewAssetModal, setShowNewAssetModal] = useState<boolean>(false);
-  const [editingInvestment, setEditingInvestment] = useState<unknown>(null);
+  const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
   
   // Carregar dados (Supabase ou locais)
   useEffect(() => {
@@ -228,7 +229,7 @@ function App() {
   };
   
   const handleEditInvestment = (investment: unknown) => {
-    setEditingInvestment(investment);
+    setEditingInvestment(investment as Investment);
     setShowEditModal(true);
   };
   
@@ -899,7 +900,13 @@ function App() {
           setShowEditModal(false);
           setEditingInvestment(null);
         }}
-        investment={editingInvestment as any}
+        investment={editingInvestment ? {
+          ...editingInvestment,
+          id: editingInvestment.id || 'temp-id',
+          user_id: 'erasmo_russo',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        } : null}
         metadata={portfolios.find(p => p.ticker === activeTab)?.metadata ? {
           ...portfolios.find(p => p.ticker === activeTab)!.metadata!,
           id: activeTab,
