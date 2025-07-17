@@ -329,129 +329,38 @@ class VoiceCommandService {
 
   async transcribeAudio(blob: Blob): Promise<TranscriptionResult> {
     try {
-      console.log('🎵 MOCK: Simulando transcrição de áudio...');
-
-      // MOCK TEMPORÁRIO - Simular transcrição de comandos comuns
-      const mockCommands = [
-        'Como está meu portfólio?',
-        'Quantas ações da Vale eu tenho?',
-        'Adicione 10 ações da Petrobras por 35 reais',
-        'Quero ver meus investimentos',
-        'Mostre o resumo da carteira'
-      ];
-
-      // Simular delay de processamento
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      const randomCommand = mockCommands[Math.floor(Math.random() * mockCommands.length)];
-
-      return {
-        success: true,
-        transcription: randomCommand
-      };
-
+      const formData = new FormData();
+      formData.append('audio', blob, 'audio.webm');
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-audio`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: formData
+      });
+      if (!response.ok) throw new Error('Transcrição falhou');
+      const data = await response.json();
+      return { success: true, transcription: data.text };
     } catch (error) {
-      console.error('Erro na transcrição:', error);
-      return {
-        success: false,
-        transcription: '',
-        error: error instanceof Error ? error.message : 'Erro na transcrição'
-      };
+      return { success: false, transcription: '', error: error.message };
     }
   }
 
   async processCommand(transcription: string): Promise<CommandProcessResult> {
     try {
-      console.log('🧠 Processando comando com IA REAL...');
-
-      // IMPLEMENTAÇÃO REAL COM IA - Análise inteligente do comando
-      const command = transcription.toLowerCase().trim();
-      
-      // Sistema de IA baseado em padrões + contexto real
-      const patterns = {
-        portfolio: /(?:portf[óo]lio|carteira|investimentos|aplicaç[õo]es|como est[áa]|resumo|total)/i,
-        queryAsset: /(?:quantas?|quanto|valor|preço|cotação|ações?|cotas?)\s*(?:da|de|do)?\s*([a-z0-9]{4,6}|vale|petrobras|banco\s*do\s*brasil|itau|bradesco|magazine|luiza|ambev)/i,
-        addInvestment: /(?:adicione?|compre?i|investir?|comprar?)\s*(\d+)?\s*(?:ações?|cotas?)?\s*(?:da?|de|do)?\s*([a-z0-9]{4,6}|vale|petrobras|banco|itau|bradesco)\s*(?:por|a)?\s*(?:r\$)?\s*(\d+(?:[,.]\d+)?)?/i,
-        currentPrice: /(?:valor|preço|cotação|quanto vale)\s*(?:de|da|do)?\s*(?:hoje|atual|agora)?\s*(?:da?|de|do)?\s*(?:ação|cota)?\s*(?:da?|de|do)?\s*([a-z0-9]{4,6}|vale|petrobras|banco\s*do\s*brasil)/i
-      };
-
-      let result: VoiceCommandResult;
-
-      // 1. CONSULTA PORTFÓLIO
-      if (patterns.portfolio.test(command)) {
-        result = {
-          action: 'consult_portfolio',
-          confidence: 0.95,
-          confirmation: 'Analisando seu portfólio completo...'
-        };
-      }
-      // 2. PREÇO ATUAL / VALOR DE MERCADO
-      else if (patterns.currentPrice.test(command)) {
-        const match = command.match(patterns.currentPrice);
-        const assetName = match?.[1] || '';
-        const ticker = this.extractTicker(assetName);
-        
-        result = {
-          action: 'current_price',
-          data: { ticker, assetName },
-          confidence: 0.9,
-          confirmation: `Consultando preço atual de ${ticker}...`
-        };
-      }
-      // 3. CONSULTA ATIVO ESPECÍFICO
-      else if (patterns.queryAsset.test(command)) {
-        const match = command.match(patterns.queryAsset);
-        const assetName = match?.[1] || '';
-        const ticker = this.extractTicker(assetName);
-        
-        result = {
-          action: 'query_asset',
-          data: { ticker, assetName },
-          confidence: 0.9,
-          confirmation: `Consultando dados de ${ticker} no seu portfólio...`
-        };
-      }
-      // 4. ADICIONAR INVESTIMENTO
-      else if (patterns.addInvestment.test(command)) {
-        const match = command.match(patterns.addInvestment);
-        const quantidade = match?.[1] ? parseInt(match[1]) : 10;
-        const assetName = match?.[2] || '';
-        const valor = match?.[3] ? parseFloat(match[3].replace(',', '.')) : 25.0;
-        const ticker = this.extractTicker(assetName);
-
-        result = {
-          action: 'add_investment',
-          data: {
-            ticker,
-            quantidade,
-            valor_unitario: valor,
-            tipo: 'COMPRA'
-          },
-          confidence: 0.85,
-          confirmation: `Adicionando ${quantidade} ${ticker} por R$ ${valor.toFixed(2)} cada...`
-        };
-      }
-      // 5. COMANDO NÃO RECONHECIDO
-      else {
-        result = {
-          action: 'error',
-          confidence: 0.1,
-          confirmation: 'Comando não reconhecido. Tente: "Como está meu portfólio?", "Quantas ações da Vale?" ou "Qual o valor hoje da PETR4?"'
-        };
-      }
-
-      return {
-        success: true,
-        result
-      };
-
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-command`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({ text: transcription })
+      });
+      if (!response.ok) throw new Error('Processamento falhou');
+      const data = await response.json();
+      return { success: true, result: data.action };
     } catch (error) {
-      console.error('Erro no processamento IA:', error);
-      return {
-        success: false,
-        result: { action: 'error', message: 'Erro na análise do comando' },
-        error: error instanceof Error ? error.message : 'Erro no processamento'
-      };
+      return { success: false, result: null, error: error.message };
     }
   }
 
@@ -498,72 +407,19 @@ class VoiceCommandService {
 
   async executeCommand(result: VoiceCommandResult, isVoice: boolean): Promise<CommandProcessResult> {
     try {
-      console.log('⚡ Executando comando com DADOS REAIS:', result.action);
-
-      let message = '';
-      let executionResult: unknown = {};
-
-      switch (result.action) {
-        case 'consult_portfolio':
-          const portfolioData = await this.getPortfolioData();
-          
-          message = `💼 Seu portfólio possui ${portfolioData.totalAtivos} ativos diferentes, valor total de R$ ${portfolioData.valorTotal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}. Dividendos recebidos: R$ ${portfolioData.totalDividendos.toLocaleString('pt-BR', {minimumFractionDigits: 2})}. Inclui ${portfolioData.ativosBR} ações brasileiras, ${portfolioData.ativosUS} ativos americanos e ${portfolioData.fiis} FIIs. Yield médio da carteira: ${portfolioData.yieldMedio.toFixed(2)}%.`;
-          
-          executionResult = portfolioData;
-          break;
-
-        case 'current_price':
-        case 'query_asset':
-          const ticker = (result.data as any)?.ticker || 'VALE3';
-          const assetData = await this.getAssetData(ticker);
-          
-          if (assetData.found) {
-            message = `📊 ${ticker}: ${assetData.posicao} ${assetData.unidade}, R$ ${assetData.valorInvestido.toLocaleString('pt-BR', {minimumFractionDigits: 2})} investidos. Preço médio: R$ ${assetData.precoMedio.toFixed(2)}. Valor atual: R$ ${assetData.valorAtual.toLocaleString('pt-BR', {minimumFractionDigits: 2})}. Dividendos: R$ ${assetData.dividendos.toLocaleString('pt-BR', {minimumFractionDigits: 2})}. ${assetData.rentabilidade >= 0 ? '📈' : '📉'} ${assetData.rentabilidade.toFixed(2)}% ${assetData.tipo}.`;
-          } else {
-            message = `❌ ${ticker} não encontrado no seu portfólio. Você possui: ${await this.getAvailableTickers()}.`;
-            assetData.error = 'Ativo não encontrado no portfólio';
-          }
-          
-          executionResult = assetData;
-          break;
-
-        case 'add_investment':
-          const { ticker: addTicker, quantidade, valor_unitario, tipo } = (result.data as any) || {};
-          const addResult = await this.addInvestmentToPortfolio(addTicker, quantidade, valor_unitario, tipo);
-          
-          if (addResult.success) {
-            message = `✅ Investimento adicionado! ${tipo} de ${quantidade} ${addTicker} por R$ ${valor_unitario?.toFixed(2)} cada. Total: R$ ${(quantidade * valor_unitario).toFixed(2)}. Nova posição: ${addResult.novaPosicao} ${addResult.unidade}.`;
-          } else {
-            message = `❌ Erro ao adicionar investimento: ${addResult.error}`;
-          }
-          
-          executionResult = addResult;
-          break;
-
-        case 'error':
-        default:
-          message = '❌ Comando não reconhecido. Tente: "Como está meu portfólio?", "Quantas ações da Vale eu tenho?" ou "Qual valor hoje da PETR4?".';
-          executionResult = { success: false, error: 'Comando inválido' };
-          break;
-      }
-
-      return {
-        success: true,
-        result: {
-          action: result.action,
-          message: message,
-          response: message,
-          data: executionResult
-        }
-      };
-
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/execute-command`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({ action: result })
+      });
+      if (!response.ok) throw new Error('Execução falhou');
+      const data = await response.json();
+      return { success: true, result: data };
     } catch (error) {
-      console.error('Erro na execução com dados reais:', error);
-      return {
-        success: false,
-        result: { action: 'error', message: 'Erro ao executar comando com dados reais' },
-        error: error instanceof Error ? error.message : 'Erro na execução'
-      };
+      return { success: false, result: null, error: error.message };
     }
   }
 
@@ -706,24 +562,20 @@ class VoiceCommandService {
 
   async generateSpeech(text: string): Promise<void> {
     try {
-      console.log('🔊 Gerando resposta em áudio...');
-      this.callbacks.onAudioStart?.();
-
-      // Mock temporário - simular áudio sendo reproduzido
-      console.log('🎵 Mock: Reproduzindo mensagem:', text);
-      
-      // Simular duração do áudio baseada no tamanho do texto
-      const duration = Math.max(2000, text.length * 50); // Mínimo 2s, 50ms por caractere
-      
-      setTimeout(() => {
-        this.callbacks.onAudioEnd?.();
-        console.log('🔊 Mock: Áudio finalizado');
-      }, duration);
-
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/text-to-speech`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({ text })
+      });
+      if (!response.ok) throw new Error('Geração de fala falhou');
+      const data = await response.json();
+      const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
+      audio.play();
     } catch (error) {
-      console.error('Erro na síntese de fala:', error);
-      this.callbacks.onAudioEnd?.();
-      // Não mostrar erro para o usuário, pois o comando já foi executado
+      console.error('Erro na geração de fala:', error);
     }
   }
 
