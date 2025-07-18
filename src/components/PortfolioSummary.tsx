@@ -9,31 +9,14 @@ interface PortfolioSummaryProps {
 }
 
 const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
-  const [marketDataMap, setMarketDataMap] = useState<Map<string, MarketData>>(new Map());
   const [loading, setLoading] = useState(true);
 
-  // Buscar dados de mercado para todos os ativos
+  // 💰 Usar dados já processados pelos componentes anteriores
   useEffect(() => {
-    const fetchAllMarketData = async () => {
-      if (portfolios.length === 0) return;
-
-      try {
-        setLoading(true);
-        const tickers = portfolios.map(p => p.ticker);
-        const marketData = await marketApiService.getMultipleMarketData(tickers);
-        setMarketDataMap(marketData);
-      } catch (error) {
-        console.error('Erro ao buscar dados de mercado:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAllMarketData();
-    
-    // Atualizar a cada 1 minuto
-    const interval = setInterval(fetchAllMarketData, 60000);
-    return () => clearInterval(interval);
+    // Simular loading breve para dar feedback visual
+    setLoading(true);
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
   }, [portfolios]);
 
   const formatCurrency = (value: number, currency = 'BRL') => {
@@ -56,27 +39,15 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
-  // Calcular totais baseados nos preços atualizados
+  // 💰 CÁLCULO DINÂMICO CORRETO - Usar dados já processados do portfolioCalculator
   const totals = portfolios.reduce((acc, portfolio) => {
-    const marketData = marketDataMap.get(portfolio.ticker);
-    
-    // Valor atual baseado no preço de mercado ou valor simulado
-    const currentMarketValue = marketData ? 
-      portfolio.currentPosition * marketData.price : 
-      portfolio.marketValue;
-
-    // Converter USD para BRL se necessário (taxa simulada)
-    const valueInBRL = marketData?.currency === 'USD' ? 
-      currentMarketValue * 5.8 : // Taxa USD/BRL simulada
-      currentMarketValue;
-
-    const investedInBRL = portfolio.metadata?.moeda === 'USD' ? 
-      Math.abs(portfolio.totalInvested) * 5.8 : 
-      Math.abs(portfolio.totalInvested);
-
-    acc.totalInvested += investedInBRL;
-    acc.totalCurrentValue += valueInBRL;
-    acc.totalDividends += portfolio.totalDividends + portfolio.totalJuros;
+    // ✅ Só somar ativos com posição atual > 0
+    if (portfolio.currentPosition > 0) {
+      // ✅ Os valores já vêm convertidos corretamente via updatePortfoliosWithMarketData
+      acc.totalInvested += portfolio.totalInvested;
+      acc.totalCurrentValue += portfolio.marketValue || portfolio.totalInvested;
+      acc.totalDividends += (portfolio.totalDividends || 0) + (portfolio.totalJuros || 0);
+    }
     
     return acc;
   }, {

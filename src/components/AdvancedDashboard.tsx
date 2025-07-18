@@ -33,26 +33,29 @@ interface AdvancedDashboardProps {
 
 const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => {
   const analysis = useMemo(() => {
-    const totalInvestido = portfolios.reduce((sum, p) => sum + Math.abs(p.totalInvested), 0);
-    const valorMercado = portfolios.reduce((sum, p) => sum + (p.marketValue || 0), 0);
-    const totalProventos = portfolios.reduce((sum, p) => sum + p.totalDividends + p.totalJuros, 0);
+    // 💰 CÁLCULO DINÂMICO CORRETO - Usar valores já processados
+    const totalInvestido = portfolios.reduce((sum, p) => p.currentPosition > 0 ? sum + p.totalInvested : sum, 0);
+    const valorMercado = portfolios.reduce((sum, p) => p.currentPosition > 0 ? sum + (p.marketValue || p.totalInvested) : sum, 0);
+    const totalProventos = portfolios.reduce((sum, p) => p.currentPosition > 0 ? sum + (p.totalDividends || 0) + (p.totalJuros || 0) : sum, 0);
     
     // Análise por tipo
     const porTipo = portfolios.reduce((acc, p) => {
-      const tipo = p.metadata.tipo;
-      if (!acc[tipo]) {
-        acc[tipo] = {
-          tipo,
-          valor_investido: 0, 
-          percentual: 0,
-          dy_medio: 0,
-          renda_mensal: 0,
-          ativos: []
-        };
+      if (p.currentPosition > 0) {
+        const tipo = p.metadata?.tipo || 'OUTRO';
+        if (!acc[tipo]) {
+          acc[tipo] = {
+            tipo,
+            valor_investido: 0, 
+            percentual: 0,
+            dy_medio: 0,
+            renda_mensal: 0,
+            ativos: []
+          };
+        }
+        acc[tipo].valor_investido += p.totalInvested;
+        acc[tipo].renda_mensal += ((p.totalDividends || 0) + (p.totalJuros || 0)) / 12;
+        acc[tipo].ativos.push(p.ticker);
       }
-      acc[tipo].valor_investido += Math.abs(p.totalInvested);
-      acc[tipo].renda_mensal += (p.totalDividends + p.totalJuros) / 12;
-      acc[tipo].ativos.push(p.ticker);
       return acc;
     }, {} as any);
 
@@ -66,19 +69,21 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
 
     // Análise por país
     const porPais = portfolios.reduce((acc, p) => {
-      const pais = p.metadata?.pais || 'BRASIL';
-      if (!acc[pais]) {
-        acc[pais] = {
-          pais,
-          valor_investido: 0,
-          percentual: 0,
-          dy_medio: 0,
-          moeda: p.metadata?.moeda || 'BRL',
-          ativos: []
-        };
+      if (p.currentPosition > 0) {
+        const pais = p.metadata?.pais || 'BRASIL';
+        if (!acc[pais]) {
+          acc[pais] = {
+            pais,
+            valor_investido: 0,
+            percentual: 0,
+            dy_medio: 0,
+            moeda: p.metadata?.moeda || 'BRL',
+            ativos: []
+          };
+        }
+        acc[pais].valor_investido += p.totalInvested;
+        acc[pais].ativos.push(p.ticker);
       }
-      acc[pais].valor_investido += Math.abs(p.totalInvested);
-      acc[pais].ativos.push(p.ticker);
       return acc;
     }, {} as any);
 
@@ -91,18 +96,20 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
 
     // Análise por setor
     const porSetor = portfolios.reduce((acc, p) => {
-      const setor = p.metadata?.setor || 'Outros';
-      if (!acc[setor]) {
-        acc[setor] = {
-          setor,
-          valor_investido: 0,
-          percentual: 0,
-          dy_medio: 0,
-          ativos: []
-        };
+      if (p.currentPosition > 0) {
+        const setor = p.metadata?.setor || 'Outros';
+        if (!acc[setor]) {
+          acc[setor] = {
+            setor,
+            valor_investido: 0,
+            percentual: 0,
+            dy_medio: 0,
+            ativos: []
+          };
+        }
+        acc[setor].valor_investido += p.totalInvested;
+        acc[setor].ativos.push(p.ticker);
       }
-      acc[setor].valor_investido += Math.abs(p.totalInvested);
-      acc[setor].ativos.push(p.ticker);
       return acc;
     }, {} as any);
 

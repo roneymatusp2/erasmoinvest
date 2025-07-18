@@ -48,23 +48,20 @@ export const updatePortfoliosWithMarketData = async (portfolios: any[]): Promise
         let currentMarketValue = portfolio.currentPosition * marketData.price;
         
         if (isUSAsset && marketData.currency === 'USD') {
-          // 💱 CONVERTER VALORES USD PARA BRL
-          console.log(`💱 Convertendo ${portfolio.ticker} de USD para BRL...`);
+          // 💱 CONVERTER APENAS O PREÇO ATUAL USD PARA BRL (valor investido JÁ ESTÁ CORRETO)
+          console.log(`💱 Convertendo preço de ${portfolio.ticker} de USD para BRL...`);
           
-          // Converter preço atual
+          // Converter apenas o preço atual
           const { brlAmount: priceInBRL } = await currencyService.convertUSDToBRL(marketData.price);
           currentPrice = priceInBRL;
           
-          // Converter valor investido (se estiver em USD)
-          if (portfolio.metadata?.moeda === 'USD' || marketData.currency === 'USD') {
-            const { brlAmount: investedInBRL } = await currencyService.convertUSDToBRL(portfolio.totalInvested);
-            totalInvested = investedInBRL;
-          }
+          // ✅ NÃO CONVERTER valor investido - já está em BRL no banco
+          // totalInvested já vem correto do supabaseService
           
-          // Calcular valor de mercado em BRL
+          // Calcular valor de mercado em BRL usando preço convertido
           currentMarketValue = portfolio.currentPosition * priceInBRL;
           
-          console.log(`💱 ${portfolio.ticker}: $${marketData.price.toFixed(2)} → R$ ${priceInBRL.toFixed(2)}`);
+          console.log(`💱 ${portfolio.ticker}: $${marketData.price.toFixed(2)} → R$ ${priceInBRL.toFixed(2)} | Investido: R$ ${totalInvested.toFixed(2)} (sem conversão)`);
         }
         
         // 📊 LUCRO/PREJUÍZO REAL EM BRL
@@ -96,12 +93,9 @@ export const updatePortfoliosWithMarketData = async (portfolios: any[]): Promise
         const isUSAsset = currencyService.isUSAsset(portfolio.ticker);
         let adjustedTotalInvested = portfolio.totalInvested;
         
-        // Se for ativo americano, converter valor investido para BRL
-        if (isUSAsset && portfolio.metadata?.moeda === 'USD') {
-          const { brlAmount: investedInBRL } = await currencyService.convertUSDToBRL(portfolio.totalInvested);
-          adjustedTotalInvested = investedInBRL;
-          console.log(`💱 ${portfolio.ticker} (sem market data): Valor investido convertido para R$ ${investedInBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
-        }
+        // ✅ NÃO CONVERTER valor investido - já está em BRL 
+        // adjustedTotalInvested já vem correto do supabaseService
+        console.log(`⚠️ ${portfolio.ticker} (sem market data): Valor investido R$ ${adjustedTotalInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
         
         const portfolioWithMarketData: PortfolioWithMarketData = {
           ...portfolio,
@@ -123,20 +117,13 @@ export const updatePortfoliosWithMarketData = async (portfolios: any[]): Promise
     } catch (error) {
       console.error(`❌ Erro ao obter dados de ${portfolio.ticker}:`, error);
       
-      // 🚫 Erro, manter valores originais com conversão se necessário
+      // 🚫 Erro, manter valores originais SEM conversão duplicada
       const isUSAsset = currencyService.isUSAsset(portfolio.ticker);
       let adjustedTotalInvested = portfolio.totalInvested;
       
-      // Se for ativo americano, tentar converter valor investido para BRL
-      if (isUSAsset && portfolio.metadata?.moeda === 'USD') {
-        try {
-          const { brlAmount: investedInBRL } = await currencyService.convertUSDToBRL(portfolio.totalInvested);
-          adjustedTotalInvested = investedInBRL;
-          console.log(`💱 ${portfolio.ticker} (erro): Valor investido convertido para R$ ${investedInBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
-        } catch (conversionError) {
-          console.error(`❌ Erro na conversão de moeda para ${portfolio.ticker}:`, conversionError);
-        }
-      }
+      // ✅ NÃO CONVERTER valor investido - já está em BRL no banco
+      // O supabaseService já fornece valores corretos em BRL
+      console.log(`⚠️ ${portfolio.ticker} (erro de API): Usando valor investido já convertido R$ ${adjustedTotalInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
       
       const portfolioWithMarketData: PortfolioWithMarketData = {
         ...portfolio,

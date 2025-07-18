@@ -49,13 +49,15 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ portfolios }) => {
     }
   };
 
-  // Calcular resumo geral
+  // 💎 CÁLCULO DINÂMICO CORRETO (sem conversões duplicadas)
   const summary = portfoliosWithMarket.reduce((acc, portfolio) => {
-    acc.totalInvested += portfolio.totalInvested;
-    acc.totalCurrentValue += portfolio.marketValue;
-    acc.totalDividends += portfolio.totalDividends + portfolio.totalJuros;
-    acc.totalProfit += portfolio.profit;
+    // Só somar se o ativo tem posição atual > 0
     if (portfolio.currentPosition > 0) {
+      // ✅ Os valores já vêm convertidos corretamente do portfolioCalculator
+      acc.totalInvested += portfolio.totalInvested;
+      acc.totalCurrentValue += portfolio.marketValue;
+      acc.totalDividends += (portfolio.totalDividends || 0) + (portfolio.totalJuros || 0);
+      acc.totalProfit += portfolio.profit;
       acc.activeAssets++;
     }
     return acc;
