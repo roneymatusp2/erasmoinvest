@@ -329,38 +329,43 @@ class VoiceCommandService {
 
   async transcribeAudio(blob: Blob): Promise<TranscriptionResult> {
     try {
-      const formData = new FormData();
-      formData.append('audio', blob, 'audio.webm');
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-audio`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: formData
+      const audioBase64 = await this.blobToBase64(blob);
+
+      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+        body: { audioBase64 },
       });
-      if (!response.ok) throw new Error('Transcrição falhou');
-      const data = await response.json();
-      return { success: true, transcription: data.text };
+
+      if (error) throw error;
+      return { success: true, transcription: data.transcription };
     } catch (error) {
-      return { success: false, transcription: '', error: error.message };
+      console.error('Erro na transcrição via Supabase:', error);
+      return { success: false, transcription: '', error: (error as Error).message };
     }
+  }
+
+  private blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = (reader.result as string).split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   }
 
   async processCommand(transcription: string): Promise<CommandProcessResult> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-command`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({ text: transcription })
+      const { data, error } = await supabase.functions.invoke('process-command', {
+        body: { text: transcription },
       });
-      if (!response.ok) throw new Error('Processamento falhou');
-      const data = await response.json();
+
+      if (error) throw error;
       return { success: true, result: data.action };
     } catch (error) {
-      return { success: false, result: null, error: error.message };
+      console.error('Erro no processamento de comando:', error);
+      return { success: false, result: null, error: (error as Error).message };
     }
   }
 
@@ -407,19 +412,15 @@ class VoiceCommandService {
 
   async executeCommand(result: VoiceCommandResult, isVoice: boolean): Promise<CommandProcessResult> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/execute-command`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({ action: result })
+      const { data, error } = await supabase.functions.invoke('execute-command', {
+        body: { action: result },
       });
-      if (!response.ok) throw new Error('Execução falhou');
-      const data = await response.json();
+
+      if (error) throw error;
       return { success: true, result: data };
     } catch (error) {
-      return { success: false, result: null, error: error.message };
+      console.error('Erro na execução de comando:', error);
+      return { success: false, result: null, error: (error as Error).message };
     }
   }
 
@@ -562,18 +563,21 @@ class VoiceCommandService {
 
   async generateSpeech(text: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/text-to-speech`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({ text })
+      const { data, error } = await supabase.functions.invoke('text-to-speech', {
+        body: { text },
       });
-      if (!response.ok) throw new Error('Geração de fala falhou');
-      const data = await response.json();
+
+      if (error) throw error;
+      
       const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
-      audio.play();
+      this.currentAudio = audio;
+      
+      audio.onended = () => {
+        this.currentAudio = null;
+        this.callbacks.onAudioEnd?.();
+      };
+      
+      await audio.play();
     } catch (error) {
       console.error('Erro na geração de fala:', error);
     }

@@ -27,7 +27,7 @@ serve(async (req) => {
     const ttsResponse = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('ErasmoInvest_API_OPENAI_AUDIO')}`,
+        'Authorization': `Bearer ${Deno.env.get('ErasmoInvest_API_OPENAI')}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -53,7 +53,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        audioOutput: audioBase64
+        audio: audioBase64
       }),
       {
         status: 200,

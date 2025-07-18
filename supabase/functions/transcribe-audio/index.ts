@@ -12,28 +12,35 @@ serve(async (req) => {
   }
 
   try {
-    // Get request data
-    const formData = await req.formData();
-    const audioFile = formData.get('audio') as File;
+    // Parse JSON body for base64 audio
+    const { audioBase64 } = await req.json();
     
-    if (!audioFile) {
+    if (!audioBase64) {
       return new Response(
-        JSON.stringify({ error: 'Arquivo de áudio não encontrado' }),
+        JSON.stringify({ error: 'Áudio não encontrado no request' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Arquivo de áudio recebido:', audioFile.name, 'Tamanho:', audioFile.size);
+    console.log('Áudio base64 recebido, tamanho:', audioBase64.length);
 
-    // Converter arquivo para buffer
-    const audioBuffer = await audioFile.arrayBuffer();
-    const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+    // Convert base64 to buffer for OpenAI
+    const audioBuffer = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+    
+    // Create FormData for OpenAI Whisper API
+    const formData = new FormData();
+    const audioFile = new File([audioBuffer], 'audio.webm', { type: 'audio/webm' });
+    formData.append('file', audioFile);
+    formData.append('model', 'whisper-1');
+    formData.append('language', 'pt');
+    formData.append('response_format', 'json');
+    formData.append('temperature', '0.2');
 
-    // Fazer chamada para OpenAI Whisper API
+    // Call OpenAI Whisper API
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('ErasmoInvest_API_OPENAI_AUDIO')}`,
+        'Authorization': `Bearer ${Deno.env.get('ErasmoInvest_API_OPENAI')}`,
       },
       body: formData
     });
@@ -45,13 +52,13 @@ serve(async (req) => {
     }
 
     const transcriptionData = await whisperResponse.json();
-    console.log('Transcrição completa:', transcriptionData);
+    console.log('Transcrição completa:', transcriptionData.text);
 
     return new Response(
       JSON.stringify({ 
         success: true,
         transcription: transcriptionData.text,
-        confidence: 0.95 // OpenAI não fornece confidence, então usamos um valor padrão alto
+        confidence: 0.95
       }),
       {
         status: 200,
