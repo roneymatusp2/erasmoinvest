@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Edit, Trash2, Save, X, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -26,6 +26,49 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
 }) => {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editData, setEditData] = useState<any>(null);
+  const [directInvestments, setDirectInvestments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // 🔥 CARREGAR INVESTIMENTOS DIRETAMENTE DO SUPABASE
+  useEffect(() => {
+    const loadInvestments = async () => {
+      if (!activeTab) return;
+      
+      try {
+        setLoading(true);
+        console.log(`🔥 Carregando investments direto para ${activeTab}...`);
+        
+        const investments = await investmentService.getByTicker(activeTab);
+        console.log(`🔥 ${activeTab} - investments carregados:`, investments.length);
+        
+        const investmentRows = investments.map(inv => ({
+          data: inv.data,
+          tipo: inv.tipo,
+          compra: inv.tipo === 'COMPRA' ? inv.quantidade : 0,
+          venda: inv.tipo === 'VENDA' ? inv.quantidade : 0,
+          quantidade: inv.quantidade,
+          valorUnit: inv.valor_unitario,
+          valor_unitario: inv.valor_unitario,
+          valor_total: inv.valor_total,
+          dividendos: inv.dividendos,
+          juros: inv.juros,
+          impostos: inv.impostos,
+          obs: inv.observacoes || '',
+          observacoes: inv.observacoes || ''
+        }));
+        
+        setDirectInvestments(investmentRows);
+        console.log(`🔥 ${activeTab} - investmentRows definidos:`, investmentRows.length);
+        
+      } catch (error) {
+        console.error('Erro ao carregar investments:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInvestments();
+  }, [activeTab]);
 
   const formatNumber = (num: number, decimals = 2) => {
     if (num === 0 || num === null || num === undefined) return '';
@@ -160,7 +203,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
     }
   };
 
-  const data = investments;
+  const data = investmentsToUse;
   const totals = calculateTotals();
   const moeda = metadata?.moeda || 'BRL';
 
@@ -206,10 +249,29 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
     );
   };
 
-  if (!investments || investments.length === 0) {
+  // 🔍 DEBUG: Verificar dados recebidos
+  console.log('🔍 InvestmentTable - activeTab:', activeTab);
+  console.log('🔍 InvestmentTable - investments (prop):', investments);
+  console.log('🔍 InvestmentTable - directInvestments:', directInvestments);
+  console.log('🔍 InvestmentTable - loading:', loading);
+
+  // 🔥 USAR INVESTIMENTOS CARREGADOS DIRETAMENTE
+  const investmentsToUse = directInvestments.length > 0 ? directInvestments : investments;
+
+  if (loading) {
+    return (
+      <div className="bg-slate-900 rounded-lg shadow-xl border border-slate-800 mb-8 p-8 text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        <p className="text-slate-400">Carregando investimentos para {activeTab}...</p>
+      </div>
+    );
+  }
+
+  if (!investmentsToUse || investmentsToUse.length === 0) {
     return (
       <div className="bg-slate-900 rounded-lg shadow-xl border border-slate-800 mb-8 p-8 text-center">
         <p className="text-slate-400">Nenhum investimento encontrado para {activeTab}</p>
+        <p className="text-slate-500 text-sm mt-2">Debug: directInvestments = {directInvestments.length}, investments = {investments?.length}</p>
       </div>
     );
   }

@@ -425,10 +425,34 @@ export const portfolioService = {
         const valorTotalVenda = Number(summary.valor_total_venda) || 0;
         const valorInvestidoLiquido = valorTotalCompra - valorTotalVenda; // Valor líquido investido
 
+        // 📊 CARREGAR INVESTIMENTOS INDIVIDUAIS PARA EXIBIR NA TABELA
+        console.log(`🔍 Carregando investments para ${ticker}...`);
+        const investments = await investmentService.getByTicker(ticker);
+        console.log(`🔍 ${ticker} - investments carregados:`, investments.length);
+        console.log(`🔍 ${ticker} - primeiro investment:`, investments[0]);
+        
+        const investmentRows = investments.map(inv => ({
+          data: inv.data,
+          tipo: inv.tipo,
+          compra: inv.tipo === 'COMPRA' ? inv.quantidade : 0,
+          venda: inv.tipo === 'VENDA' ? inv.quantidade : 0,
+          quantidade: inv.quantidade,
+          valorUnit: inv.valor_unitario,
+          valor_unitario: inv.valor_unitario,
+          valor_total: inv.valor_total,
+          dividendos: inv.dividendos,
+          juros: inv.juros,
+          impostos: inv.impostos,
+          obs: inv.observacoes || '',
+          observacoes: inv.observacoes || ''
+        }));
+        
+        console.log(`🔍 ${ticker} - investmentRows criados:`, investmentRows.length);
+
         const portfolio = {
           ticker,
           metadata: assetMeta,
-          investments: [], // Não precisamos mais dos investimentos individuais
+          investments: investmentRows, // ✅ CARREGAR INVESTIMENTOS INDIVIDUAIS
           totalInvested: valorInvestidoLiquido, // ✅ VALOR CORRETO
           currentPosition: Number(summary.saldo_atual), // ✅ SALDO CORRETO  
           totalDividends: Number(summary.total_dividendos) || 0,
