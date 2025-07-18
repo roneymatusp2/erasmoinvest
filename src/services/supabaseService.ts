@@ -425,11 +425,8 @@ export const portfolioService = {
         const valorTotalVenda = Number(summary.valor_total_venda) || 0;
         const valorInvestidoLiquido = valorTotalCompra - valorTotalVenda; // Valor líquido investido
 
-        // 📊 CARREGAR INVESTIMENTOS INDIVIDUAIS PARA EXIBIR NA TABELA
-        console.log(`🔍 Carregando investments para ${ticker}...`);
+        // Carregar investimentos individuais para exibir na tabela
         const investments = await investmentService.getByTicker(ticker);
-        console.log(`🔍 ${ticker} - investments carregados:`, investments.length);
-        console.log(`🔍 ${ticker} - primeiro investment:`, investments[0]);
         
         const investmentRows = investments.map(inv => ({
           data: inv.data,
@@ -446,8 +443,6 @@ export const portfolioService = {
           obs: inv.observacoes || '',
           observacoes: inv.observacoes || ''
         }));
-        
-        console.log(`🔍 ${ticker} - investmentRows criados:`, investmentRows.length);
 
         const portfolio = {
           ticker,

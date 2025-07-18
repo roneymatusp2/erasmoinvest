@@ -29,17 +29,19 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
   const [directInvestments, setDirectInvestments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // 🔥 CARREGAR INVESTIMENTOS DIRETAMENTE DO SUPABASE
+  // Carregar investimentos diretamente do Supabase
   useEffect(() => {
+    let mounted = true;
+    
     const loadInvestments = async () => {
       if (!activeTab) return;
       
       try {
         setLoading(true);
-        console.log(`🔥 Carregando investments direto para ${activeTab}...`);
         
         const investments = await investmentService.getByTicker(activeTab);
-        console.log(`🔥 ${activeTab} - investments carregados:`, investments.length);
+        
+        if (!mounted) return;
         
         const investmentRows = investments.map(inv => ({
           data: inv.data,
@@ -58,16 +60,21 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
         }));
         
         setDirectInvestments(investmentRows);
-        console.log(`🔥 ${activeTab} - investmentRows definidos:`, investmentRows.length);
         
       } catch (error) {
         console.error('Erro ao carregar investments:', error);
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
     loadInvestments();
+    
+    return () => {
+      mounted = false;
+    };
   }, [activeTab]);
 
   const formatNumber = (num: number, decimals = 2) => {
@@ -106,11 +113,11 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
     return 'text-red-400 bg-red-500/20';
   };
 
-  const handleEdit = (index: number) => {
+  const handleEdit = (index: number, investmentData: any[]) => {
     if (onEditInvestment) {
-      onEditInvestment(investments[index]);
+      onEditInvestment(investmentData[index]);
     } else {
-      setEditData({ ...investments[index] });
+      setEditData({ ...investmentData[index] });
       setEditingIndex(index);
     }
   };
@@ -128,8 +135,8 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
     setEditData(null);
   };
 
-  const handleDelete = async (index: number) => {
-    const investment = investments[index];
+  const handleDelete = async (index: number, investmentData: any[]) => {
+    const investment = investmentData[index];
     if (!investment?.id) {
       toast.error('ID do investimento não encontrado');
       return;
@@ -149,14 +156,14 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
   };
 
   // 💰 CÁLCULOS 100% CORRETOS - CORRIGIDO
-  const calculateTotals = () => {
+  const calculateTotals = (investmentData: any[]) => {
     let totalInvestido = 0;
     let currentPosition = 0;
     let totalDividendos = 0;
     let totalJuros = 0;
     let totalImpostos = 0;
     
-    investments.forEach(investment => {
+    investmentData.forEach(investment => {
       switch (investment.tipo) {
         case 'COMPRA':
           totalInvestido += investment.valor_total; // Soma o valor gasto
@@ -203,15 +210,17 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
     }
   };
 
+  // Usar investimentos carregados diretamente se disponíveis
+  const investmentsToUse = directInvestments.length > 0 ? directInvestments : investments;
   const data = investmentsToUse;
-  const totals = calculateTotals();
+  const totals = calculateTotals(data);
   const moeda = metadata?.moeda || 'BRL';
 
   // 🔍 DEBUG: Verificar cálculos corretos
   React.useEffect(() => {
-    if (activeTab === 'BBAS3' && investments.length > 0) {
+    if (activeTab === 'BBAS3' && data.length > 0) {
       console.log('🧮 === VERIFICAÇÃO CÁLCULOS BBAS3 ===');
-      console.log('📊 Total registros:', investments.length);
+      console.log('📊 Total registros:', data.length);
       console.log('💰 Total Investido calculado:', totals.totalInvestido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
       console.log('📈 Posição Atual:', totals.currentPosition.toLocaleString('pt-BR'), 'cotas');
       console.log('💎 Total Dividendos:', totals.totalDividendos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
@@ -219,7 +228,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
       console.log('📈 DY Geral:', totals.dyGeral.toFixed(2) + '%');
       console.log('💵 Preço Médio:', totals.precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
     }
-  }, [activeTab, investments, totals]);
+  }, [activeTab, data.length]);
 
   const renderHeader = () => {
     return (
@@ -249,14 +258,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
     );
   };
 
-  // 🔍 DEBUG: Verificar dados recebidos
-  console.log('🔍 InvestmentTable - activeTab:', activeTab);
-  console.log('🔍 InvestmentTable - investments (prop):', investments);
-  console.log('🔍 InvestmentTable - directInvestments:', directInvestments);
-  console.log('🔍 InvestmentTable - loading:', loading);
-
-  // 🔥 USAR INVESTIMENTOS CARREGADOS DIRETAMENTE
-  const investmentsToUse = directInvestments.length > 0 ? directInvestments : investments;
+  // Verificar dados recebidos
 
   if (loading) {
     return (
@@ -271,7 +273,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
     return (
       <div className="bg-slate-900 rounded-lg shadow-xl border border-slate-800 mb-8 p-8 text-center">
         <p className="text-slate-400">Nenhum investimento encontrado para {activeTab}</p>
-        <p className="text-slate-500 text-sm mt-2">Debug: directInvestments = {directInvestments.length}, investments = {investments?.length}</p>
+        <p className="text-slate-500 text-sm mt-2">Dados não encontrados</p>
       </div>
     );
   }
@@ -480,13 +482,13 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
                       ) : (
                         <>
                           <button
-                            onClick={() => handleEdit(index)}
+                            onClick={() => handleEdit(index, data)}
                             className="text-blue-400 hover:text-blue-300 transition-colors"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDelete(index)}
+                            onClick={() => handleDelete(index, data)}
                             className="text-red-400 hover:text-red-300 transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />

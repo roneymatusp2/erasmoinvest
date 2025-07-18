@@ -794,24 +794,15 @@ function App() {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.5 }}
             >
-              {(() => {
-                const currentPortfolio = portfolios.find(p => p.ticker === activeTab);
-                console.log('🔍 App.tsx - activeTab:', activeTab);
-                console.log('🔍 App.tsx - currentPortfolio:', currentPortfolio);
-                console.log('🔍 App.tsx - investments:', currentPortfolio?.investments);
-                
-                return (
-                  <InvestmentTable
-                    portfolio={currentPortfolio}
-                    investments={currentPortfolio?.investments || []}
-                    metadata={currentPortfolio?.metadata || null}
-                    activeTab={activeTab} 
-                    onDataChange={handleDataChange}
-                    onEditInvestment={handleEditInvestment}
-                    readOnly={false}
-                  />
-                );
-              })()}
+              <InvestmentTable
+                portfolio={portfolios.find(p => p.ticker === activeTab)}
+                investments={portfolios.find(p => p.ticker === activeTab)?.investments || []}
+                metadata={portfolios.find(p => p.ticker === activeTab)?.metadata || null}
+                activeTab={activeTab} 
+                onDataChange={handleDataChange}
+                onEditInvestment={handleEditInvestment}
+                readOnly={false}
+              />
             </motion.div>
           ) : (
             <motion.div
