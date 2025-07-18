@@ -132,6 +132,9 @@ const NewAssetModal: React.FC<NewAssetModalProps> = ({
         return <Building className="h-5 w-5" />;
       case 'etf':
         return <TrendingUp className="h-5 w-5" />;
+      case 'tesouro_direto':
+      case 'tesouro':
+        return <Building className="h-5 w-5 text-green-400" />;
       default:
         return <DollarSign className="h-5 w-5" />;
     }

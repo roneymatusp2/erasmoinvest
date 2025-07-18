@@ -77,8 +77,8 @@ class MarketApiService {
 
   // Determinar se é ação brasileira ou americana
   private isBrazilianStock(symbol: string): boolean {
-    // Ações brasileiras terminam com 3, 4 ou 11
-    return symbol.endsWith('3') || symbol.endsWith('4') || symbol.endsWith('11');
+    // Ações brasileiras terminam com 3, 4 ou 11, ou são títulos do Tesouro Direto
+    return symbol.endsWith('3') || symbol.endsWith('4') || symbol.endsWith('11') || symbol.startsWith('TESOURO_');
   }
 
   // Determinar se é ação americana
@@ -226,7 +226,10 @@ class MarketApiService {
     let basePrice = 50;
     
     if (isBR) {
-      if (symbol.endsWith('11')) {
+      if (symbol.startsWith('TESOURO_')) {
+        // Títulos do Tesouro Direto
+        basePrice = 8000 + Math.random() * 4000; // R$ 8.000-12.000 (preço unitário)
+      } else if (symbol.endsWith('11')) {
         // FIIs brasileiros
         basePrice = 80 + Math.random() * 40; // R$ 80-120
       } else {

@@ -14,7 +14,7 @@ export type Database = {
           id: string
           ticker: string
           nome: string
-          tipo: 'FII' | 'ACAO' | 'ETF' | 'REIT' | 'STOCK'
+          tipo: 'FII' | 'ACAO' | 'ETF' | 'REIT' | 'STOCK' | 'TESOURO_DIRETO'
           pais: 'BRASIL' | 'EUA' | 'GLOBAL'
           moeda: 'BRL' | 'USD'
           setor: string | null
@@ -36,7 +36,7 @@ export type Database = {
           id?: string
           ticker: string
           nome: string
-          tipo: 'FII' | 'ACAO' | 'ETF' | 'REIT' | 'STOCK'
+          tipo: 'FII' | 'ACAO' | 'ETF' | 'REIT' | 'STOCK' | 'TESOURO_DIRETO'
           pais?: 'BRASIL' | 'EUA' | 'GLOBAL'
           moeda?: 'BRL' | 'USD'
           setor?: string | null
@@ -58,7 +58,7 @@ export type Database = {
           id?: string
           ticker?: string
           nome?: string
-          tipo?: 'FII' | 'ACAO' | 'ETF' | 'REIT' | 'STOCK'
+          tipo?: 'FII' | 'ACAO' | 'ETF' | 'REIT' | 'STOCK' | 'TESOURO_DIRETO'
           pais?: 'BRASIL' | 'EUA' | 'GLOBAL'
           moeda?: 'BRL' | 'USD'
           setor?: string | null

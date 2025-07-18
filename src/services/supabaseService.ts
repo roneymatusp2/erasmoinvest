@@ -322,15 +322,17 @@ export const portfolioService = {
     try {
       console.log('🔄 Tentando conectar com Supabase...');
       
-      const investments = await investmentService.getAll();
+      // 💎 NOVA ABORDAGEM: Usar investment_summary diretamente em vez de processar investimentos individuais
+      const userId = '4362da88-d01c-4ffe-a447-75751ea8e182';
+      const summaries = await summaryService.getInvestmentSummary(userId);
       const metadata = await assetMetadataService.getAll();
       
-      console.log('📊 Dados carregados do Supabase:', investments?.length || 0, 'investimentos');
+      console.log('📊 Dados carregados do investment_summary:', summaries?.length || 0, 'ativos');
       console.log('📋 Metadados disponíveis:', metadata?.length || 0, 'ativos');
       
-      // Se não há investimentos, usar dados demo
-      if (!investments || investments.length === 0) {
-        console.log('⚠️ Nenhum investimento encontrado, usando dados demo');
+      // Se não há dados, usar dados demo
+      if (!summaries || summaries.length === 0) {
+        console.log('⚠️ Nenhum dado encontrado, usando dados demo');
         return this.getDemoPortfolio();
       }
 
@@ -339,6 +341,7 @@ export const portfolioService = {
         const isFII = ticker.endsWith('11');
         const isBrazilianStock = ticker.endsWith('3') || ticker.endsWith('4') || ticker.endsWith('11');
         const isUS = !isBrazilianStock && (ticker.length <= 5 || ['DVN', 'EVEX', 'O', 'VOO', 'VNQ'].includes(ticker));
+        const isTesouroDireto = ticker.startsWith('TESOURO_');
         
         // Mapeamento de nomes conhecidos
         const knownNames: Record<string, string> = {
@@ -359,28 +362,29 @@ export const portfolioService = {
           'VNQ': 'Vanguard Real Estate ETF',
           'DVN': 'Devon Energy Corporation',
           'EVEX': 'Eve Holding Inc.',
-          'O': 'Realty Income Corporation'
+          'O': 'Realty Income Corporation',
+          'TESOURO_SELIC_2026': 'Tesouro Selic 2026'
         };
         
         return {
           id: `auto-${ticker}`,
           ticker,
           nome: knownNames[ticker] || ticker,
-          tipo: isFII ? 'FII' : (isUS ? 'STOCK' : 'ACAO') as 'FII' | 'ACAO' | 'ETF' | 'REIT' | 'STOCK',
+          tipo: isTesouroDireto ? 'TESOURO_DIRETO' : (isFII ? 'FII' : (isUS ? 'STOCK' : 'ACAO')) as 'FII' | 'ACAO' | 'ETF' | 'REIT' | 'STOCK' | 'TESOURO_DIRETO',
           pais: isUS ? 'EUA' : 'BRASIL' as 'BRASIL' | 'EUA' | 'GLOBAL',
           moeda: isUS ? 'USD' : 'BRL' as 'BRL' | 'USD',
-          setor: isFII ? 'Fundos Imobiliários' : (isUS ? 'Technology' : 'Diversos'),
+          setor: isTesouroDireto ? 'Renda Fixa' : (isFII ? 'Fundos Imobiliários' : (isUS ? 'Technology' : 'Diversos')),
           subsetor: null,
           segmento: null,
           liquidez: 'MEDIA',
-          categoria_dy: isFII ? 'RENDA_FIXA' : 'RENDA_VARIAVEL',
+          categoria_dy: (isFII || isTesouroDireto) ? 'RENDA_FIXA' : 'RENDA_VARIAVEL',
           benchmark: isUS ? 'S&P500' : 'IBOVESPA',
           isin: null,
           cnpj: null,
           gestora: null,
           descricao: `Ativo ${ticker} - Metadata gerada automaticamente`,
           site_oficial: null,
-          cor_tema: isFII ? '#3b82f6' : (isUS ? '#10b981' : '#f59e0b'),
+          cor_tema: isTesouroDireto ? '#059669' : (isFII ? '#3b82f6' : (isUS ? '#10b981' : '#f59e0b')),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
@@ -389,7 +393,7 @@ export const portfolioService = {
       const portfolioMap = new Map<string, {
         ticker: string;
         metadata: AssetMetadata;
-        investments: AdaptedInvestment[];
+        investments: any[];
         totalInvested: number;
         currentPosition: number;
         totalDividends: number;
@@ -401,9 +405,13 @@ export const portfolioService = {
         profitPercent: number;
       }>();
 
-      // Agrupar investimentos por ticker - INCLUINDO TODOS OS TICKERS
-      for (const investment of investments) {
-        const ticker = investment.ticker;
+      // 💎 NOVA LÓGICA: Usar dados da investment_summary (valores corretos!)
+      for (const summary of summaries) {
+        const ticker = summary.ticker;
+        
+        // Apenas processar ativos com saldo > 0
+        if (Number(summary.saldo_atual) <= 0) continue;
+        
         let assetMeta = metadata.find(m => m.ticker === ticker);
         
         // Se não tem metadados, criar automaticamente
@@ -412,47 +420,29 @@ export const portfolioService = {
           assetMeta = createAutoMetadata(ticker);
         }
 
-        if (!portfolioMap.has(ticker)) {
-          portfolioMap.set(ticker, {
-            ticker,
-            metadata: assetMeta,
-            investments: [],
-            totalInvested: 0,
-            currentPosition: 0,
-            totalDividends: 0,
-            totalJuros: 0,
-            totalImpostos: 0,
-            totalYield: 0,
-            marketValue: 0,
-            profit: 0,
-            profitPercent: 0
-          });
-        }
+        // 💰 CÁLCULO CORRETO DO VALOR INVESTIDO LÍQUIDO
+        const valorTotalCompra = Number(summary.valor_total_compra) || 0;
+        const valorTotalVenda = Number(summary.valor_total_venda) || 0;
+        const valorInvestidoLiquido = valorTotalCompra - valorTotalVenda; // Valor líquido investido
 
-        const portfolio = portfolioMap.get(ticker)!;
-        portfolio.investments.push(investment);
+        const portfolio = {
+          ticker,
+          metadata: assetMeta,
+          investments: [], // Não precisamos mais dos investimentos individuais
+          totalInvested: valorInvestidoLiquido, // ✅ VALOR CORRETO
+          currentPosition: Number(summary.saldo_atual), // ✅ SALDO CORRETO  
+          totalDividends: Number(summary.total_dividendos) || 0,
+          totalJuros: Number(summary.total_juros) || 0,
+          totalImpostos: Number(summary.total_impostos) || 0,
+          totalYield: 0, // Será calculado abaixo
+          marketValue: 0, // Será calculado abaixo
+          profit: 0, // Será calculado abaixo
+          profitPercent: 0 // Será calculado abaixo
+        };
 
-        // 🔧 CÁLCULOS CORRIGIDOS - Separar valor investido de posição atual
-        switch (investment.tipo) {
-          case 'COMPRA':
-            portfolio.totalInvested += investment.valor_total; // Soma o valor gasto
-            portfolio.currentPosition += investment.quantidade; // Soma as cotas
-            break;
-          case 'VENDA':
-            // CORREÇÃO: Para vendas, não diminuir totalInvested pois é valor recebido
-            // totalInvested deve representar quanto foi gasto (não recebido)
-            portfolio.currentPosition -= investment.quantidade; // Remove as cotas vendidas
-            break;
-          case 'DIVIDENDO':
-            portfolio.totalDividends += investment.dividendos;
-            break;
-          case 'JUROS':
-            portfolio.totalJuros += investment.juros;
-            break;
-          case 'DESDOBRAMENTO':
-            portfolio.currentPosition += investment.quantidade; // Adiciona cotas do desdobramento
-            break;
-        }
+        portfolioMap.set(ticker, portfolio);
+        
+        console.log(`💎 ${ticker}: Investido líquido R$ ${valorInvestidoLiquido.toFixed(2)} | Saldo ${summary.saldo_atual} cotas`);
       }
 
       // 💰 CALCULAR MÉTRICAS FINAIS COM DADOS REAIS DE MERCADO
@@ -567,10 +557,11 @@ export const summaryService = {
     }
   },
 
-  // 📊 BUSCAR TOTAIS GERAIS DA CARTEIRA
+  // 📊 BUSCAR TOTAIS GERAIS DA CARTEIRA COM CONVERSÃO USD/BRL
   async getPortfolioTotals(userId: string) {
     try {
       const summaries = await this.getInvestmentSummary(userId);
+      const { currencyService } = await import('./currencyService');
       
       const totals = {
         totalInvested: 0,
@@ -580,11 +571,33 @@ export const summaryService = {
         totalImpostos: 0,
         totalProventos: 0,
         activeAssets: 0,
-        totalAssets: summaries.length
+        totalAssets: summaries.length,
+        totalInvestedUSD: 0,
+        totalInvestedBRL: 0,
+        exchangeRate: 0
       };
 
-      summaries.forEach(summary => {
-        totals.totalInvested += Number(summary.valor_total_compra) - Number(summary.valor_total_venda);
+      // Obter cotação USD/BRL
+      const exchangeRate = await currencyService.getUSDToBRLRate();
+      totals.exchangeRate = exchangeRate.rate;
+
+      for (const summary of summaries) {
+        const investedValue = Number(summary.valor_total_compra) - Number(summary.valor_total_venda);
+        const isUSAsset = currencyService.isUSAsset(summary.ticker);
+        
+        if (isUSAsset && summary.currency === 'USD') {
+          // Converter valores USD para BRL
+          const { brlAmount } = await currencyService.convertUSDToBRL(investedValue);
+          totals.totalInvested += brlAmount;
+          totals.totalInvestedUSD += investedValue;
+          
+          console.log(`💱 ${summary.ticker}: $${investedValue.toFixed(2)} → R$ ${brlAmount.toFixed(2)}`);
+        } else {
+          // Valores já em BRL
+          totals.totalInvested += investedValue;
+          totals.totalInvestedBRL += investedValue;
+        }
+        
         totals.totalDividends += Number(summary.total_dividendos);
         totals.totalJuros += Number(summary.total_juros);
         totals.totalImpostos += Number(summary.total_impostos);
@@ -593,9 +606,9 @@ export const summaryService = {
         if (Number(summary.saldo_atual) > 0) {
           totals.activeAssets++;
         }
-      });
+      }
 
-      console.log('💰 Totais da carteira calculados:', totals);
+      console.log('💰 Totais da carteira calculados com conversão:', totals);
       return totals;
     } catch (error) {
       console.error('❌ Erro ao calcular totais da carteira:', error);
