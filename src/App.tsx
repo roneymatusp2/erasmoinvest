@@ -26,6 +26,7 @@ import { assetMetadata } from './data/assetMetadata';
 // Serviços do Supabase
 import { portfolioService, AssetMetadata as SupabaseAssetMetadata } from './services/supabaseService';
 // import { updatePortfoliosWithMarketData, PortfolioWithMarketData } from './services/portfolioCalculator';
+import { dataFixService } from './services/dataFixService';
 
 // Estilos e componentes
 import './index.css';
@@ -736,6 +737,27 @@ function App() {
               <Download className="h-4 w-4" />
               <span>Excel Completo</span>
             </button>
+            
+            {/* Botão de Validação - DESENVOLVIMENTO */}
+            {import.meta.env.DEV && (
+              <button
+                onClick={async () => {
+                  try {
+                    toast.loading('Validando dados...', { id: 'validation' });
+                    const results = await dataFixService.runFullValidation();
+                    console.log('📊 Resultados da validação:', results);
+                    toast.success(`Validação concluída! Total: R$ ${results.portfolioTotals.totalInvestidoBRL.toFixed(2)}`, { id: 'validation' });
+                  } catch (error) {
+                    console.error('Erro na validação:', error);
+                    toast.error('Erro ao validar dados', { id: 'validation' });
+                  }
+                }}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+              >
+                <RefreshCw className="h-4 w-4" />
+                <span>Validar Dados</span>
+              </button>
+            )}
           </div>
         </div>
         

@@ -5,19 +5,33 @@ import { Portfolio } from '../types/investment';
 import { marketApiService, MarketData } from '../services/marketApi';
 
 interface PortfolioSummaryProps {
-  portfolios: Portfolio[];
+  portfolios: any[];
+  showValidation?: boolean; // Nova prop para mostrar dados validados
 }
 
-const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
-  const [loading, setLoading] = useState(true);
-
-  // 💰 Usar dados já processados pelos componentes anteriores
+const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios, showValidation = false }) => {
+  const [loading, setLoading] = useState(false);
+  const [validatedData, setValidatedData] = useState<any>(null);
+  
   useEffect(() => {
-    // Simular loading breve para dar feedback visual
-    setLoading(true);
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
-  }, [portfolios]);
+    if (showValidation) {
+      validateData();
+    }
+  }, [showValidation]); // eslint-disable-line react-hooks/exhaustive-deps
+  
+  const validateData = async () => {
+    try {
+      setLoading(true);
+      const { dataFixService } = await import('../services/dataFixService');
+      const results = await dataFixService.recalculatePortfolioTotals('4362da88-d01c-4ffe-a447-75751ea8e182');
+      setValidatedData(results);
+      console.log('✅ Dados validados:', results);
+    } catch (error) {
+      console.error('❌ Erro na validação:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const formatCurrency = (value: number, currency = 'BRL') => {
     if (currency === 'USD') {
@@ -39,26 +53,58 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
-  // 💰 CÁLCULO DINÂMICO CORRETO - Usar dados já processados do portfolioCalculator
-  const totals = portfolios.reduce((acc, portfolio) => {
-    // ✅ Só somar ativos com posição atual > 0
-    if (portfolio.currentPosition > 0) {
-      // ✅ Os valores já vêm convertidos corretamente via updatePortfoliosWithMarketData
-      acc.totalInvested += portfolio.totalInvested;
-      acc.totalCurrentValue += portfolio.marketValue || portfolio.totalInvested;
-      acc.totalDividends += (portfolio.totalDividends || 0) + (portfolio.totalJuros || 0);
+  // 💰 CALCULAR TOTAIS CONSOLIDADOS - CORRIGIDO
+  const calculateTotals = () => {
+    // Se temos dados validados, usar eles
+    if (validatedData) {
+      return {
+        totalInvestido: validatedData.totalInvestidoBRL,
+        valorAtual: validatedData.totalInvestidoBRL * 1.05, // Estimativa até ter API
+        totalDividendos: validatedData.totalDividendos,
+        totalJuros: validatedData.totalJuros,
+        totalProventos: validatedData.totalProventos,
+        rentabilidade: 0,
+        rentabilidadePercent: 0,
+        dyTotal: validatedData.totalInvestidoBRL > 0 
+          ? (validatedData.totalProventos / validatedData.totalInvestidoBRL * 100) 
+          : 0,
+        numeroAtivos: validatedData.numeroAtivos
+      };
     }
     
-    return acc;
-  }, {
-    totalInvested: 0,
-    totalCurrentValue: 0,
-    totalDividends: 0
-  });
+    // Cálculo normal com os portfolios
+    let totalInvestido = 0;
+    let valorAtual = 0;
+    let totalDividendos = 0;
+    let totalJuros = 0;
+    let totalProventos = 0;
+    let numeroAtivos = 0;
 
-  const totalProfit = totals.totalCurrentValue - totals.totalInvested;
-  const totalProfitPercent = totals.totalInvested > 0 ? 
-    (totalProfit / totals.totalInvested) * 100 : 0;
+    for (const portfolio of portfolios) {
+      if (portfolio.currentPosition > 0) {
+        totalInvestido += portfolio.totalInvested;
+        valorAtual += portfolio.marketValue || portfolio.totalInvested;
+        totalDividendos += (portfolio.totalDividends || 0) + (portfolio.totalJuros || 0);
+        numeroAtivos++;
+      }
+    }
+
+    return {
+      totalInvestido,
+      valorAtual,
+      totalDividendos,
+      totalProventos: totalDividendos, // Alias para totalProventos
+      rentabilidade: valorAtual - totalInvestido,
+      rentabilidadePercent: totalInvestido > 0 ? ((valorAtual - totalInvestido) / totalInvestido) * 100 : 0,
+      dyTotal: totalInvestido > 0 ? (totalDividendos / totalInvestido) * 100 : 0,
+      numeroAtivos
+    };
+  };
+
+  const totals = calculateTotals();
+  const totalProfit = totals.valorAtual - totals.totalInvestido;
+  const totalProfitPercent = totals.totalInvestido > 0 ? 
+    (totalProfit / totals.totalInvestido) * 100 : 0;
 
   const getProfitColor = (value: number) => {
     if (value > 0) return 'text-green-400';
@@ -119,7 +165,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
             <span className="text-sm text-slate-400">Total Investido</span>
           </div>
           <p className="text-2xl font-bold text-white">
-            {formatCurrency(totals.totalInvested)}
+            {formatCurrency(totals.totalInvestido)}
           </p>
         </div>
 
@@ -129,7 +175,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
             <span className="text-sm text-slate-400">Valor Atual</span>
           </div>
           <p className="text-2xl font-bold text-white">
-            {formatCurrency(totals.totalCurrentValue)}
+            {formatCurrency(totals.valorAtual)}
           </p>
         </div>
 
@@ -139,7 +185,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
             <span className="text-sm text-slate-400">Total Proventos</span>
           </div>
           <p className="text-2xl font-bold text-white">
-            {formatCurrency(totals.totalDividends)}
+            {formatCurrency(totals.totalDividendos)}
           </p>
         </div>
 
@@ -148,7 +194,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
             <span className="text-sm">Ativos</span>
           </div>
           <p className="text-2xl font-bold text-white">
-            {portfolios.length}
+            {totals.numeroAtivos}
           </p>
         </div>
       </div>
@@ -164,7 +210,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
               Valor Total se Vendesse Tudo Hoje
             </h3>
             <p className="text-3xl font-bold text-white">
-              {formatCurrency(totals.totalCurrentValue)}
+              {formatCurrency(totals.valorAtual)}
             </p>
             <p className="text-sm text-slate-400">
               Baseado nos preços atuais de mercado
@@ -213,8 +259,8 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
         <div className="text-center p-3 bg-slate-800/50 rounded-lg">
           <p className="text-slate-400">Yield Médio</p>
           <p className="text-lg font-semibold text-blue-400">
-            {portfolios.length > 0 ? 
-              (portfolios.reduce((sum, p) => sum + p.totalYield, 0) / portfolios.length).toFixed(2) : 0
+            {totals.numeroAtivos > 0 ? 
+              (totals.totalDividendos / totals.numeroAtivos).toFixed(2) : 0
             }%
           </p>
         </div>
@@ -222,7 +268,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
         <div className="text-center p-3 bg-slate-800/50 rounded-lg">
           <p className="text-slate-400">Melhor Ativo</p>
           <p className="text-lg font-semibold text-green-400">
-            {portfolios.length > 0 ? 
+            {totals.numeroAtivos > 0 ? 
               portfolios.reduce((best, current) => 
                 current.profitPercent > best.profitPercent ? current : best
               ).ticker : '-'
