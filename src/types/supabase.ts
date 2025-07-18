@@ -86,8 +86,16 @@ export type Database = {
           compra: number | null
           venda: number | null
           valor_unit: number | null
+          valor_compra: number | null
+          valor_venda: number | null
           dividendos: number | null
           juros: number | null
+          impostos: number | null
+          dyc_percent: number | null
+          currency: string | null
+          tipo_operacao: string | null
+          preco_medio_atual: number | null
+          saldo_atual: number | null
           observacoes: string | null
           created_at: string | null
           updated_at: string | null
@@ -100,8 +108,16 @@ export type Database = {
           compra?: number | null
           venda?: number | null
           valor_unit?: number | null
+          valor_compra?: number | null
+          valor_venda?: number | null
           dividendos?: number | null
           juros?: number | null
+          impostos?: number | null
+          dyc_percent?: number | null
+          currency?: string | null
+          tipo_operacao?: string | null
+          preco_medio_atual?: number | null
+          saldo_atual?: number | null
           observacoes?: string | null
           created_at?: string | null
           updated_at?: string | null
@@ -114,8 +130,16 @@ export type Database = {
           compra?: number | null
           venda?: number | null
           valor_unit?: number | null
+          valor_compra?: number | null
+          valor_venda?: number | null
           dividendos?: number | null
           juros?: number | null
+          impostos?: number | null
+          dyc_percent?: number | null
+          currency?: string | null
+          tipo_operacao?: string | null
+          preco_medio_atual?: number | null
+          saldo_atual?: number | null
           observacoes?: string | null
           created_at?: string | null
           updated_at?: string | null

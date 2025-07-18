@@ -6,9 +6,16 @@ export interface Investment {
   compra: number;
   venda: number;
   valor_unit: number;
+  valor_compra: number;
+  valor_venda: number;
   dividendos: number;
   juros: number;
-  impostos?: number;
+  impostos: number;
+  dyc_percent: number;
+  currency: string;
+  tipo_operacao: string;
+  preco_medio_atual: number;
+  saldo_atual: number;
   observacoes: string;
   created_at?: string;
   updated_at?: string;

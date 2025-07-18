@@ -521,6 +521,166 @@ export const portfolioService = {
   }
 };
 
+// 📊 INTERFACE PARA O RESUMO DE INVESTIMENTOS (baseado na view investment_summary)
+export interface InvestmentSummary {
+  ticker: string;
+  user_id: string;
+  currency: string;
+  total_compras: number;
+  total_vendas: number;
+  saldo_atual: number;
+  valor_total_compra: number;
+  valor_total_venda: number;
+  total_dividendos: number;
+  total_juros: number;
+  total_impostos: number;
+  total_proventos: number;
+  preco_medio: number;
+  total_operacoes: number;
+  primeira_operacao: string;
+  ultima_operacao: string;
+}
+
+// 📈 SERVIÇOS QUE USAM A VIEW INVESTMENT_SUMMARY (DADOS CORRETOS)
+export const summaryService = {
+  // 📊 BUSCAR RESUMO COMPLETO DOS INVESTIMENTOS USANDO A VIEW
+  async getInvestmentSummary(userId: string): Promise<InvestmentSummary[]> {
+    try {
+      console.log('📊 Buscando resumo de investimentos para user:', userId);
+      
+      const { data, error } = await supabase
+        .from('investment_summary')
+        .select('*')
+        .eq('user_id', userId)
+        .order('ticker');
+
+      if (error) {
+        console.error('❌ Erro ao buscar investment_summary:', error);
+        throw error;
+      }
+
+      console.log('✅ Resumo de investimentos obtido:', data?.length || 0, 'ativos');
+      return data || [];
+    } catch (error) {
+      console.error('💥 Erro crítico ao buscar resumo:', error);
+      return [];
+    }
+  },
+
+  // 📊 BUSCAR TOTAIS GERAIS DA CARTEIRA
+  async getPortfolioTotals(userId: string) {
+    try {
+      const summaries = await this.getInvestmentSummary(userId);
+      
+      const totals = {
+        totalInvested: 0,
+        totalCurrentValue: 0, // Precisará de dados de mercado
+        totalDividends: 0,
+        totalJuros: 0,
+        totalImpostos: 0,
+        totalProventos: 0,
+        activeAssets: 0,
+        totalAssets: summaries.length
+      };
+
+      summaries.forEach(summary => {
+        totals.totalInvested += Number(summary.valor_total_compra) - Number(summary.valor_total_venda);
+        totals.totalDividends += Number(summary.total_dividendos);
+        totals.totalJuros += Number(summary.total_juros);
+        totals.totalImpostos += Number(summary.total_impostos);
+        totals.totalProventos += Number(summary.total_proventos);
+        
+        if (Number(summary.saldo_atual) > 0) {
+          totals.activeAssets++;
+        }
+      });
+
+      console.log('💰 Totais da carteira calculados:', totals);
+      return totals;
+    } catch (error) {
+      console.error('❌ Erro ao calcular totais da carteira:', error);
+      return null;
+    }
+  },
+
+  // 🔍 BUSCAR DADOS DETALHADOS DE UM ATIVO ESPECÍFICO
+  async getAssetDetails(userId: string, ticker: string) {
+    try {
+      console.log(`🔍 Buscando detalhes do ativo ${ticker} para user ${userId}`);
+      
+      // Buscar resumo do ativo
+      const { data: summary, error: summaryError } = await supabase
+        .from('investment_summary')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('ticker', ticker)
+        .single();
+
+      if (summaryError) {
+        console.error('❌ Erro ao buscar resumo do ativo:', summaryError);
+        throw summaryError;
+      }
+
+      // Buscar operações detalhadas
+      const { data: operations, error: operationsError } = await supabase
+        .from('investments')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('ticker', ticker)
+        .order('date', { ascending: true });
+
+      if (operationsError) {
+        console.error('❌ Erro ao buscar operações do ativo:', operationsError);
+        throw operationsError;
+      }
+
+      console.log(`✅ Detalhes do ${ticker} obtidos: ${operations?.length || 0} operações`);
+      return {
+        summary,
+        operations: operations || []
+      };
+    } catch (error) {
+      console.error(`💥 Erro ao buscar detalhes do ${ticker}:`, error);
+      return null;
+    }
+  },
+
+  // 📈 BUSCAR DADOS AGRUPADOS POR MOEDA
+  async getPortfolioByCurrency(userId: string) {
+    try {
+      const summaries = await this.getInvestmentSummary(userId);
+      
+      const byCurrency = {
+        BRL: {
+          totalInvested: 0,
+          totalProventos: 0,
+          assets: [] as InvestmentSummary[]
+        },
+        USD: {
+          totalInvested: 0,
+          totalProventos: 0,
+          assets: [] as InvestmentSummary[]
+        }
+      };
+
+      summaries.forEach(summary => {
+        const currency = summary.currency as 'BRL' | 'USD';
+        const invested = Number(summary.valor_total_compra) - Number(summary.valor_total_venda);
+        
+        byCurrency[currency].totalInvested += invested;
+        byCurrency[currency].totalProventos += Number(summary.total_proventos);
+        byCurrency[currency].assets.push(summary);
+      });
+
+      console.log('💱 Dados por moeda calculados:', byCurrency);
+      return byCurrency;
+    } catch (error) {
+      console.error('❌ Erro ao agrupar por moeda:', error);
+      return null;
+    }
+  }
+};
+
 // Serviço para autenticação
 export const authService = {
   async signInWithEmailAndPassword(email: string, password: string) {

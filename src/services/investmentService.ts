@@ -92,7 +92,8 @@ export const calculateHistoricalDY = (investments: Investment[], index: number):
   let accumulatedInvestment = 0;
   for (let i = 0; i <= index; i++) {
     const r = investments[i];
-    const valorTotal = (r.compra - r.venda) * r.valor_unit;
+    // ✅ CORRIGIDO: Usar valor_compra e valor_venda diretamente
+    const valorTotal = (r.valor_compra || 0) - (r.valor_venda || 0);
     accumulatedInvestment += valorTotal;
   }
   
@@ -127,11 +128,18 @@ export const getPortfolioData = async (userId: string): Promise<Portfolio[]> => 
       const portfolio = portfolioMap.get(ticker)!;
       portfolio.investments.push(investment);
       
-      const valorTotal = (investment.compra - investment.venda) * investment.valor_unit;
-      portfolio.totalInvested += valorTotal;
+      // ✅ CORRIGIDO: Usar valor_compra e valor_venda diretamente + posição do saldo_atual
+      const valorLiquido = (investment.valor_compra || 0) - (investment.valor_venda || 0);
+      portfolio.totalInvested += valorLiquido;
       portfolio.totalDividends += investment.dividendos || 0;
       portfolio.totalJuros += investment.juros || 0;
-      portfolio.currentPosition += (investment.compra - investment.venda);
+      
+      // ✅ USAR SALDO_ATUAL se disponível, senão calcular pela diferença
+      if (investment.saldo_atual !== null && investment.saldo_atual !== undefined) {
+        portfolio.currentPosition = investment.saldo_atual;
+      } else {
+        portfolio.currentPosition += (investment.compra || 0) - (investment.venda || 0);
+      }
     }
 
     const portfolios: Portfolio[] = [];

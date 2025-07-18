@@ -65,7 +65,7 @@ function App() {
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
   const [showHorizontal, setShowHorizontal] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(true);
-  const [useLocalData, setUseLocalData] = useState<boolean>(true); // FORÇAR DADOS LOCAIS
+  const [useLocalData, setUseLocalData] = useState<boolean>(false); // USAR DADOS DO SUPABASE
   
   // Estados dos modais
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
@@ -88,8 +88,8 @@ function App() {
       
       setLoading(true);
       
-      // DESABILITADO: Tentar carregar do Supabase primeiro
-      if (false && portfolioService && !useLocalData) {
+      // HABILITADO: Tentar carregar do Supabase primeiro
+      if (portfolioService && !useLocalData) {
         try {
           console.log('🔄 === FORÇANDO NOVA CARGA SUPABASE ===');
           
