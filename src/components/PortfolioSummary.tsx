@@ -19,8 +19,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
 
       try {
         setLoading(true);
-        const tickers = portfolios.map(p => p.ticker);
-        const marketData = await marketApiService.getMultipleMarketData(tickers);
+        const marketData = await marketApiService.getMultipleMarketData(portfolios);
         setMarketDataMap(marketData);
       } catch (error) {
         console.error('Erro ao buscar dados de mercado:', error);
@@ -60,23 +59,13 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
   const totals = portfolios.reduce((acc, portfolio) => {
     const marketData = marketDataMap.get(portfolio.ticker);
     
-    // Valor atual baseado no preço de mercado ou valor simulado
-    const currentMarketValue = marketData ? 
-      portfolio.currentPosition * marketData.price : 
-      portfolio.marketValue;
-
-    // Converter USD para BRL se necessário (taxa simulada)
-    const valueInBRL = marketData?.currency === 'USD' ? 
-      currentMarketValue * 5.8 : // Taxa USD/BRL simulada
-      currentMarketValue;
-
-    const investedInBRL = portfolio.metadata?.moeda === 'USD' ? 
-      Math.abs(portfolio.totalInvested) * 5.8 : 
-      Math.abs(portfolio.totalInvested);
+    // Usar valores já convertidos para BRL do portfolio
+    const valueInBRL = portfolio.marketValue || 0;
+    const investedInBRL = portfolio.totalInvested || 0;
 
     acc.totalInvested += investedInBRL;
     acc.totalCurrentValue += valueInBRL;
-    acc.totalDividends += portfolio.totalDividends + portfolio.totalJuros;
+    acc.totalDividends += (portfolio.totalDividends || 0) + (portfolio.totalJuros || 0);
     
     return acc;
   }, {
@@ -252,9 +241,11 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
           <p className="text-slate-400">Melhor Ativo</p>
           <p className="text-lg font-semibold text-green-400">
             {portfolios.length > 0 ? 
-              portfolios.reduce((best, current) => 
-                current.profitPercent > best.profitPercent ? current : best
-              ).ticker : '-'
+              [...portfolios]
+                .filter(p => (p.profitPercent || 0) > 0)
+                .sort((a, b) => (b.profitPercent || 0) - (a.profitPercent || 0))
+                [0]?.ticker || '-'
+              : '-'
             }
           </p>
         </div>

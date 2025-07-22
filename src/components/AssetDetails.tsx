@@ -54,7 +54,7 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
   }, [metadata.ticker]);
 
   // 💰 CALCULAR VALORES REAIS
-  const currentMarketValue = marketData ? currentPosition * marketData.price : 0;
+  const currentMarketValue = marketData ? currentPosition * marketData.currentPrice : 0;
   const totalProfit = currentMarketValue - totalInvested;
   const profitPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
   const isProfit = totalProfit >= 0;
@@ -67,7 +67,10 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
     })}`;
   };
 
-  const formatPercent = (value: number) => {
+  const formatPercent = (value: number | undefined) => {
+    if (value === undefined || value === null || isNaN(value)) {
+      return '0.00%';
+    }
     const sign = value >= 0 ? '+' : '';
     return `${sign}${value.toFixed(2)}%`;
   };
@@ -150,18 +153,17 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
             ) : marketData ? (
               <div>
                 <div className="text-3xl font-bold text-white mb-1">
-                  {formatCurrency(marketData.price, marketData.currency)}
+                  {formatCurrency(marketData.currentPrice, marketData.currency)}
                 </div>
                 <div className={`flex items-center justify-end space-x-1 text-sm ${
-                  marketData.changePercent >= 0 ? 'text-green-400' : 'text-red-400'
+                  marketData.priceChangePercent >= 0 ? 'text-green-400' : 'text-red-400'
                 }`}>
-                  {marketData.changePercent >= 0 ? (
+                  {marketData.priceChangePercent >= 0 ? (
                     <TrendingUp className="h-4 w-4" />
                   ) : (
                     <TrendingDown className="h-4 w-4" />
                   )}
-                  <span>{formatPercent(marketData.changePercent)}</span>
-                  <span>({formatCurrency(Math.abs(marketData.change), marketData.currency)})</span>
+                  <span>{formatPercent(marketData.priceChangePercent || 0)}</span>
                 </div>
               </div>
             ) : (
@@ -206,7 +208,7 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
               {formatCurrency(currentMarketValue, marketData?.currency)}
             </div>
             <div className="text-xs text-slate-500">
-              {marketData ? `${currentPosition.toLocaleString('pt-BR')} × ${formatCurrency(marketData.price, marketData.currency)}` : 'Calculando...'}
+              {marketData ? `${currentPosition.toLocaleString('pt-BR')} × ${formatCurrency(marketData.currentPrice, marketData.currency)}` : 'Calculando...'}
             </div>
           </div>
 

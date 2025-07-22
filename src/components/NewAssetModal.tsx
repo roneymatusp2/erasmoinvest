@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, Plus, TrendingUp, DollarSign, Globe, Building } from 'lucide-react';
-import { marketApiService, SearchResult } from '../services/marketApi';
 import { searchMappings, TickerMapping } from '../data/tickerMapping';
 import { investmentService } from '../services/supabaseService';
 import toast from 'react-hot-toast';
@@ -10,25 +9,25 @@ interface NewAssetModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onOpenAddInvestment?: (ticker: string) => void;
 }
 
 const NewAssetModal: React.FC<NewAssetModalProps> = ({
   isOpen,
   onClose,
-  onSuccess
+  onSuccess,
+  onOpenAddInvestment
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [mappingResults, setMappingResults] = useState<TickerMapping[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedAsset, setSelectedAsset] = useState<SearchResult | TickerMapping | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<TickerMapping | null>(null);
   const [step, setStep] = useState<'search' | 'confirm'>('search');
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Buscar ativos quando a query muda
   useEffect(() => {
     if (searchQuery.length < 2) {
-      setSearchResults([]);
       setMappingResults([]);
       return;
     }
@@ -42,20 +41,6 @@ const NewAssetModal: React.FC<NewAssetModalProps> = ({
     const mappings = searchMappings(searchQuery);
     setMappingResults(mappings);
 
-    // Buscar nas APIs com delay para evitar muitas requisições
-    searchTimeoutRef.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const results = await marketApiService.searchTickers(searchQuery);
-        setSearchResults(results);
-      } catch (error) {
-        console.error('Erro na busca:', error);
-        toast.error('Erro ao buscar ativos');
-      } finally {
-        setLoading(false);
-      }
-    }, 500);
-
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
@@ -63,14 +48,9 @@ const NewAssetModal: React.FC<NewAssetModalProps> = ({
     };
   }, [searchQuery]);
 
-  const handleSelectAsset = (asset: SearchResult | TickerMapping) => {
+  const handleSelectAsset = (asset: TickerMapping) => {
     setSelectedAsset(asset);
     setStep('confirm');
-  };
-
-  // Type guards
-  const isTickerMapping = (asset: SearchResult | TickerMapping): asset is TickerMapping => {
-    return 'officialTicker' in asset;
   };
 
   const handleAddAsset = async () => {
@@ -79,38 +59,17 @@ const NewAssetModal: React.FC<NewAssetModalProps> = ({
     try {
       setLoading(true);
       
-      // Determinar o ticker oficial
-      const ticker = isTickerMapping(selectedAsset) 
-        ? selectedAsset.officialTicker 
-        : selectedAsset.symbol;
-
-      // Buscar dados detalhados do ativo
-      const details = await marketApiService.getTickerDetails(ticker);
+      // Fechar este modal e abrir o modal de operação com o ticker selecionado
+      handleClose();
       
-      // Criar metadata do ativo
-      const metadata = {
-        ticker: ticker,
-        nome: isTickerMapping(selectedAsset) ? selectedAsset.friendlyName : selectedAsset.name,
-        setor: isTickerMapping(selectedAsset) ? selectedAsset.sector : selectedAsset.type,
-        tipo: isTickerMapping(selectedAsset) ? selectedAsset.sector : selectedAsset.type,
-        moeda: isTickerMapping(selectedAsset) ? 'BRL' : selectedAsset.currency,
-        mercado: isTickerMapping(selectedAsset) ? selectedAsset.market : selectedAsset.market,
-        logo_url: isTickerMapping(selectedAsset) ? null : selectedAsset.logo || null,
-        preco_atual: details?.data?.regularMarketPrice || details?.data?.['05. price'] || 0,
-        variacao_dia: details?.data?.regularMarketChange || 0,
-        variacao_percentual: details?.data?.regularMarketChangePercent || 0,
-        volume: details?.data?.regularMarketVolume || 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      // Por enquanto, só mostrar sucesso já que a estrutura está criada
-      toast.success(`${metadata.nome} será adicionado em breve! (Funcionalidade em desenvolvimento)`);
-      onSuccess();
-      onClose();
+      if (onOpenAddInvestment) {
+        onOpenAddInvestment(selectedAsset.officialTicker);
+      }
+      
+      toast.success(`${selectedAsset.friendlyName} selecionado! Adicione sua operação.`);
     } catch (error) {
-      console.error('Erro ao adicionar ativo:', error);
-      toast.error('Erro ao adicionar ativo. Tente novamente.');
+      console.error('Erro ao selecionar ativo:', error);
+      toast.error('Erro ao selecionar ativo. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -118,7 +77,6 @@ const NewAssetModal: React.FC<NewAssetModalProps> = ({
 
   const handleClose = () => {
     setSearchQuery('');
-    setSearchResults([]);
     setMappingResults([]);
     setSelectedAsset(null);
     setStep('search');
@@ -201,7 +159,7 @@ const NewAssetModal: React.FC<NewAssetModalProps> = ({
                   <span className="mr-2">⭐</span> Ativos Populares
                 </h3>
                 <div className="grid gap-3">
-                  {mappingResults.slice(0, 5).map((mapping) => (
+                  {mappingResults.slice(0, 10).map((mapping) => (
                     <motion.div
                       key={mapping.officialTicker}
                       whileHover={{ scale: 1.02 }}
@@ -230,69 +188,8 @@ const NewAssetModal: React.FC<NewAssetModalProps> = ({
               </div>
             )}
 
-            {/* Resultados da API */}
-            {searchResults.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-white mb-3 flex items-center">
-                  <Globe className="h-5 w-5 mr-2" />
-                  Resultados da Busca
-                </h3>
-                <div className="grid gap-3">
-                  {searchResults.map((result, index) => (
-                    <motion.div
-                      key={`${result.symbol}-${index}`}
-                      whileHover={{ scale: 1.02 }}
-                      onClick={() => handleSelectAsset(result)}
-                      className="p-4 bg-slate-700/50 rounded-xl border border-slate-600 cursor-pointer hover:border-blue-500/50 transition-all"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          {result.logo ? (
-                            <img 
-                              src={result.logo} 
-                              alt={result.name}
-                              className="w-10 h-10 rounded-lg object-cover"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <div className="p-2 bg-blue-600/20 rounded-lg">
-                              {getAssetIcon(result.type)}
-                            </div>
-                          )}
-                          <div>
-                            <div className="flex items-center space-x-2">
-                              <span className="text-white font-medium">{result.name}</span>
-                              <span className="text-slate-400">({result.symbol})</span>
-                              <span className="text-lg">{getMarketFlag(result.market)}</span>
-                            </div>
-                            <p className="text-slate-400 text-sm">{result.type} • {result.currency} • {result.market}</p>
-                            {result.matchScore && (
-                              <p className="text-xs text-green-400">
-                                Relevância: {Math.round(result.matchScore * 100)}%
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <Plus className="h-5 w-5 text-blue-400" />
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Estado de Loading */}
-            {loading && (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-400"></div>
-                <span className="ml-3 text-slate-400">Buscando ativos...</span>
-              </div>
-            )}
-
             {/* Mensagem quando não há resultados */}
-            {searchQuery.length >= 2 && !loading && searchResults.length === 0 && mappingResults.length === 0 && (
+            {searchQuery.length >= 2 && !loading && mappingResults.length === 0 && (
               <div className="text-center py-8">
                 <div className="p-4 bg-slate-700/50 rounded-xl">
                   <Search className="h-12 w-12 text-slate-400 mx-auto mb-3" />
@@ -312,48 +209,34 @@ const NewAssetModal: React.FC<NewAssetModalProps> = ({
             <div className="space-y-6">
               <div className="p-6 bg-slate-700/50 rounded-xl border border-slate-600">
                 <div className="flex items-center space-x-4 mb-4">
-                  {(!isTickerMapping(selectedAsset) && selectedAsset.logo) ? (
-                    <img 
-                      src={selectedAsset.logo} 
-                      alt={selectedAsset.name}
-                      className="w-16 h-16 rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="p-4 bg-green-600/20 rounded-lg">
-                      {getAssetIcon(isTickerMapping(selectedAsset) ? selectedAsset.sector : selectedAsset.type)}
-                    </div>
-                  )}
-                   <div>
-                     <h3 className="text-2xl font-bold text-white">
-                       {isTickerMapping(selectedAsset) ? selectedAsset.friendlyName : selectedAsset.name}
-                     </h3>
-                     <p className="text-slate-400">
-                       {isTickerMapping(selectedAsset) ? selectedAsset.officialTicker : selectedAsset.symbol}
-                     </p>
-                   </div>
-                 </div>
-                 
-                 <div className="grid grid-cols-2 gap-4 text-sm">
-                   <div>
-                     <span className="text-slate-400">Tipo:</span>
-                     <p className="text-white font-medium">{isTickerMapping(selectedAsset) ? selectedAsset.sector : selectedAsset.type}</p>
-                   </div>
-                   <div>
-                     <span className="text-slate-400">Mercado:</span>
-                     <p className="text-white font-medium">
-                       {selectedAsset.market}
-                     </p>
-                   </div>
-                   <div>
-                     <span className="text-slate-400">Moeda:</span>
-                     <p className="text-white font-medium">{isTickerMapping(selectedAsset) ? 'BRL' : selectedAsset.currency}</p>
-                   </div>
-                   {!isTickerMapping(selectedAsset) && selectedAsset.matchScore && (
-                    <div>
-                      <span className="text-slate-400">Relevância:</span>
-                      <p className="text-white font-medium">{Math.round(selectedAsset.matchScore * 100)}%</p>
-                    </div>
-                  )}
+                  <div className="p-4 bg-green-600/20 rounded-lg">
+                    {getAssetIcon(selectedAsset.sector)}
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">
+                      {selectedAsset.friendlyName}
+                    </h3>
+                    <p className="text-slate-400">
+                      {selectedAsset.officialTicker}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-slate-400">Tipo:</span>
+                    <p className="text-white font-medium">{selectedAsset.sector}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Mercado:</span>
+                    <p className="text-white font-medium">
+                      {selectedAsset.market}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Moeda:</span>
+                    <p className="text-white font-medium">BRL</p>
+                  </div>
                 </div>
               </div>
 
@@ -390,4 +273,4 @@ const NewAssetModal: React.FC<NewAssetModalProps> = ({
   );
 };
 
-export default NewAssetModal; 
+export default NewAssetModal;

@@ -91,14 +91,16 @@ export interface Portfolio {
   totalImpostos?: number;
   currentPosition: number;
   totalYield: number;
-  marketValue: number;
-  profit: number;
-  profitPercent: number;
+  marketValue?: number;
+  profit?: number;
+  profitPercent?: number;
   averagePrice?: number;
   currentPrice?: number;
+  priceChangePercent?: number;
+  moeda?: 'BRL' | 'USD';
   lastDividend?: number;
   monthlyIncome?: number;
-  investments: InvestmentRow[];
+  investments?: InvestmentRow[];
   performance?: {
     dy_12m: number;
     dy_historico: number;
@@ -158,15 +160,18 @@ export interface PortfolioAnalysis {
 }
 
 export interface MarketData {
-  symbol: string;
-  price: number;
-  change: number;
-  changePercent: number;
-  volume: number;
-  marketCap: number;
-  pe: number;
-  dividendYield: number;
-  lastUpdate: string;
+  symbol?: string;
+  price?: number;
+  change?: number;
+  changePercent?: number;
+  volume?: number;
+  marketCap?: number;
+  pe?: number;
+  dividendYield?: number;
+  lastUpdate?: string;
+  currentPrice?: number;
+  priceChangePercent?: number;
+  currency?: string;
 }
 
 export interface PieChartData {

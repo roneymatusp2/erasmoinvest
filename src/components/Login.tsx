@@ -2,36 +2,68 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { supabase } from '../lib/supabase';
 
-interface LoginProps {
-  onLogin: () => void;
-}
+interface LoginProps {}
 
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
+const Login: React.FC<LoginProps> = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-
-  const CORRECT_PASSWORD = 'ErasmoInvest12!@';
+  const email = 'erasmorusso@uol.com.br'; // Email fixo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    console.log('[Login] Iniciando tentativa de login para:', email);
 
     try {
-      // Verificar senha simples
-      if (password === CORRECT_PASSWORD) {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      console.log('[Login] Resposta do Supabase:', { data, error });
+
+      if (error) {
+        console.error('[Login] Erro no Supabase:', error.message);
+        toast.error(`Erro: ${error.message}`);
+      } else if (data.user) {
+        console.log('[Login] Sucesso! Usuário autenticado:', data.user.id);
         toast.success('Login realizado com sucesso!');
-        localStorage.setItem('erasmoInvestAuth', 'true');
-        onLogin();
       } else {
-        toast.error('Senha incorreta!');
+        console.warn('[Login] Resposta inesperada do Supabase, sem erro mas sem usuário.', data);
+        toast.error('Ocorreu um erro inesperado no login.');
       }
     } catch (error) {
-      console.error('Erro no login:', error);
-      toast.error('Erro ao fazer login');
+      console.error('[Login] Erro crítico no handleSubmit:', error);
+      toast.error('Erro crítico ao tentar fazer login.');
     } finally {
       setIsLoading(false);
+      console.log('[Login] Finalizando tentativa de login.');
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    toast.loading('Enviando link de redefinição...');
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/update-password`,
+      });
+
+      toast.dismiss();
+
+      if (error) {
+        console.error('[Login] Erro ao redefinir senha:', error.message);
+        toast.error(`Erro: ${error.message}`);
+      } else {
+        console.log('[Login] E-mail de redefinição enviado para:', email);
+        toast.success('Link para redefinir a senha enviado para o seu e-mail!');
+      }
+    } catch (error) {
+      toast.dismiss();
+      console.error('[Login] Erro crítico ao redefinir senha:', error);
+      toast.error('Erro crítico ao tentar redefinir a senha.');
     }
   };
 
@@ -122,6 +154,16 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               )}
             </motion.button>
           </form>
+
+          {/* Esqueci minha senha */}
+          <div className="mt-4 text-center">
+            <button
+              onClick={handlePasswordReset}
+              className="text-sm text-slate-400 hover:text-white hover:underline"
+            >
+              Esqueceu sua senha?
+            </button>
+          </div>
 
           {/* Informação do Sistema */}
           <motion.div

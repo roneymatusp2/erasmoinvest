@@ -7,12 +7,9 @@ import {
   Download, 
   FileDown, 
   RefreshCw, 
-  Table, 
-  BarChart3, 
   LayoutGrid,
   ListOrdered,
-  Search,
-  Calendar
+  Search
 } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import { Toaster as SonnerToaster } from 'sonner';
@@ -22,6 +19,7 @@ import Login from './components/Login';
 // Dados locais como fallback
 import { portfolioData } from './data/portfolioData';
 import { assetMetadata } from './data/assetMetadata';
+import { getAssetType } from './utils/assetType';
 
 // Serviços do Supabase
 import { portfolioService, AssetMetadata as SupabaseAssetMetadata } from './services/supabaseService';
@@ -31,13 +29,9 @@ import { portfolioService, AssetMetadata as SupabaseAssetMetadata } from './serv
 import './index.css';
 import Header from './components/Header';
 import InvestmentTable from './components/InvestmentTable';
-import AdvancedDashboard from './components/AdvancedDashboard';
-import AssetCard from './components/AssetCard';
-import Summary from './components/Summary';
 import AddInvestmentModal from './components/AddInvestmentModal';
 import EditInvestmentModal from './components/EditInvestmentModal';
 import NewAssetModal from './components/NewAssetModal';
-import PortfolioSummary from './components/PortfolioSummary';
 // 🚀 NOVOS COMPONENTES INCRÍVEIS PARA AS ABAS PRINCIPAIS
 import OverviewTab from './components/OverviewTab';
 import DashboardTab from './components/DashboardTab';
@@ -46,37 +40,61 @@ import SettingsTab from './components/SettingsTab';
 import { Portfolio } from './types/investment';
 import { Investment } from './types/investment';
 
+import { supabase } from './lib/supabase';
+
 function App() {
   // Debug das variáveis de ambiente
   console.log('🔧 ERASMO INVEST - Configurações:');
   console.log('🌐 SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL || 'NÃO DEFINIDA');
   console.log('🔑 SUPABASE_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY ? 'DEFINIDA' : 'NÃO DEFINIDA');
-  console.log('🔒 Auth Estado:', localStorage.getItem('erasmoInvestAuth'));
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
-    localStorage.getItem('erasmoInvestAuth') === 'true'
-  );
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [dateFilter, setDateFilter] = useState<string>('');
   const [refreshKey, setRefreshKey] = useState<number>(0); 
-  const [viewMode, setViewMode] = useState<'table' | 'dashboard' | 'all'>('table');
-  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
   const [showHorizontal, setShowHorizontal] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(true);
-  const [useLocalData, setUseLocalData] = useState<boolean>(true); // FORÇAR DADOS LOCAIS
+  const [useLocalData, setUseLocalData] = useState<boolean>(false); // USAR DADOS DO SUPABASE
   
   // Estados dos modais
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [showEditModal, setShowEditModal] = useState<boolean>(false);
   const [showNewAssetModal, setShowNewAssetModal] = useState<boolean>(false);
   const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
+  const [initialTicker, setInitialTicker] = useState<string>('');
+
+  useEffect(() => {
+    // Verificação inicial e mais robusta da sessão
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAuthenticated(!!session?.user);
+      console.log('🔒 Auth Estado Inicial (Verificação Manual):', session ? 'Sessão Ativa' : 'Sem Sessão');
+      setLoading(false); // Parar o loading após a verificação inicial
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user;
+      setIsAuthenticated(!!user);
+      console.log('🔒 Auth Estado (Listener):', user ? 'AUTENTICADO' : 'NÃO AUTENTICADO');
+      // Se o usuário deslogar, não precisamos recarregar dados, apenas limpar a tela
+      if (!user) {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
   
   // Carregar dados (Supabase ou locais)
   useEffect(() => {
     if (isAuthenticated) {
       loadData();
+    } else {
+      // Limpar dados se o usuário não estiver autenticado
+      setPortfolios([]);
+      setActiveTab('');
     }
   }, [isAuthenticated, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -88,8 +106,8 @@ function App() {
       
       setLoading(true);
       
-      // DESABILITADO: Tentar carregar do Supabase primeiro
-      if (false && portfolioService && !useLocalData) {
+      // Tentar carregar do Supabase primeiro
+      if (portfolioService && !useLocalData) {
         try {
           console.log('🔄 === FORÇANDO NOVA CARGA SUPABASE ===');
           
@@ -103,14 +121,6 @@ function App() {
           if (portfolioData && portfolioData.length > 0) {
             console.log('📋 Lista de tickers carregados:', portfolioData.map(p => p.ticker).join(', '));
             console.log('💰 Total de investimentos únicos:', portfolioData.length);
-            
-            // Verificar se BBAS3 está presente
-            const bbas3 = portfolioData.find(p => p.ticker === 'BBAS3');
-            if (bbas3) {
-              console.log('✅ BBAS3 encontrado - Posição:', bbas3.currentPosition, 'ações');
-            } else {
-              console.log('❌ BBAS3 NÃO encontrado na lista');
-            }
             
             // Mostrar alguns exemplos de ativos
             const top5 = portfolioData.slice(0, 5).map(p => `${p.ticker}(${p.currentPosition})`);
@@ -129,81 +139,16 @@ function App() {
           return;
         } catch (error) {
           console.error('❌ ERRO NO SUPABASE:', error);
-          console.log('🔄 Fallback para dados locais...');
-          setUseLocalData(true);
+          toast.error('Erro ao carregar dados do Supabase');
+          setLoading(false);
         }
+      } else {
+        console.log('⚠️ Modo dados locais ativado ou portfolioService indisponível');
+        setLoading(false);
       }
-      
-      // Fallback para dados locais
-      const localPortfolios = Object.keys(portfolioData).sort().map(ticker => {
-        const data = portfolioData[ticker];
-        const metadata = assetMetadata[ticker];
-        
-        let totalInvested = 0;
-        let totalDividends = 0;
-        let totalJuros = 0;
-        let totalImpostos = 0;
-        let currentPosition = 0;
-        
-        data.forEach(row => {
-          const valorTotal = (row.compra - row.venda) * row.valorUnit;
-          totalInvested += valorTotal;
-          totalDividends += row.dividendos || 0;
-          totalJuros += row.juros || 0;
-          totalImpostos += row.impostos || 0;
-          currentPosition += (row.compra - row.venda);
-        });
-        
-        const totalProventos = totalDividends + totalJuros;
-        const totalYield = totalInvested > 0 ? ((totalProventos) / Math.abs(totalInvested)) * 100 : 0;
-        
-        const averagePrice = currentPosition > 0 ? Math.abs(totalInvested) / currentPosition : 0;
-        const marketFactor = 1 + ((Math.random() - 0.3) * 0.2);
-        const marketValue = currentPosition * averagePrice * marketFactor;
-        
-        const profit = marketValue - Math.abs(totalInvested);
-        const profitPercent = totalInvested !== 0 ? (profit / Math.abs(totalInvested)) * 100 : 0;
-        
-        return {
-          ticker,
-          metadata,
-          totalInvested: Math.abs(totalInvested),
-          totalDividends,
-          totalJuros,
-          totalImpostos,
-          currentPosition,
-          totalYield: isNaN(totalYield) ? 0 : totalYield,
-          marketValue,
-          profit,
-          profitPercent: isNaN(profitPercent) ? 0 : profitPercent,
-          investments: data.map(row => ({
-            data: row.data,
-            tipo: (row.compra > 0 ? 'COMPRA' : row.venda > 0 ? 'VENDA' : 'DIVIDENDO') as 'COMPRA' | 'VENDA' | 'DIVIDENDO' | 'JUROS' | 'DESDOBRAMENTO',
-            compra: row.compra,
-            venda: row.venda,
-            quantidade: row.compra || row.venda || 0,
-            valorUnit: row.valorUnit || 0,
-            valor_unitario: row.valorUnit || 0,
-            valor_total: (row.compra - row.venda) * row.valorUnit,
-            dividendos: row.dividendos || 0,
-            juros: row.juros || 0,
-            impostos: row.impostos || 0,
-            obs: row.obs || '',
-            observacoes: row.obs || ''
-          }))
-        };
-      });
-      
-      setPortfolios(localPortfolios);
-      
-      if (!activeTab && localPortfolios.length > 0) {
-        setActiveTab(localPortfolios[0].ticker);
-      }
-      
-      setLoading(false);
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-      toast.error('Erro ao carregar dados');
+      console.error('Erro geral ao carregar dados:', error);
+      toast.error('Erro geral ao carregar dados');
       setLoading(false);
     }
   };
@@ -220,7 +165,6 @@ function App() {
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
-    setSelectedAsset(null);
   };
 
   const handleDataChange = () => {
@@ -238,6 +182,11 @@ function App() {
     setShowAddModal(false);
     setShowEditModal(false);
     setEditingInvestment(null);
+  };
+
+  const handleOpenAddInvestmentFromAsset = (ticker: string) => {
+    setInitialTicker(ticker);
+    setShowAddModal(true);
   };
 
   const exportToExcel = () => {
@@ -559,19 +508,50 @@ function App() {
   };
 
   const handleLogin = () => {
-    setIsAuthenticated(true);
-    loadData();
+    // A autenticação agora é gerenciada pelo onAuthStateChange
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('erasmoInvestAuth');
-    setIsAuthenticated(false);
-    toast.success('Você saiu do sistema com sucesso');
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast.error('Erro ao sair do sistema');
+    } else {
+      toast.success('Você saiu do sistema com sucesso');
+    }
+  };
+
+  // 🎨 Função para obter classes de cor dos botões da grade de ativos
+  const getTabColor = (ticker: string): string => {
+    // Se a aba está ativa, manter destaque azul padrão
+    if (activeTab === ticker) {
+      return 'bg-blue-600 text-white shadow-lg';
+    }
+
+    const meta = assetMetadata[ticker];
+    const tipo = getAssetType(ticker, meta);
+    const pais = meta?.pais;
+
+    switch (tipo) {
+      case 'FII':
+        return 'bg-green-700/70 text-green-200 hover:bg-green-600';
+      case 'ACAO':
+        return (pais === 'BRASIL' || !pais)
+          ? 'bg-violet-700/70 text-violet-200 hover:bg-violet-600'
+          : 'bg-orange-700/70 text-orange-200 hover:bg-orange-600';
+      case 'TESOURO_DIRETO':
+        return 'bg-emerald-700/70 text-emerald-200 hover:bg-emerald-600';
+      case 'ETF':
+      case 'REIT':
+      case 'STOCK':
+        return 'bg-orange-700/70 text-orange-200 hover:bg-orange-600';
+      default:
+        return 'bg-slate-700/50 text-slate-300 hover:bg-slate-600';
+    }
   };
 
   // PRIMEIRA VERIFICAÇÃO: Se não está autenticado, mostrar login
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
+    return <Login />;
   }
 
   // SEGUNDA VERIFICAÇÃO: Se autenticado mas carregando dados, mostrar loading
@@ -580,8 +560,8 @@ function App() {
       <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 text-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Carregando dados...</p>
-          {useLocalData && <p className="text-sm text-slate-400 mt-2">Usando dados locais</p>}
+          <p>Carregando dados do Supabase...</p>
+          <p className="text-sm text-slate-400 mt-2">Conectando com APIs de mercado</p>
         </div>
       </div>
     );
@@ -615,49 +595,44 @@ function App() {
         <div className={`bg-slate-800/40 backdrop-blur-sm rounded-lg border border-slate-700/50 p-2 mb-6 ${showHorizontal ? 'overflow-x-auto' : ''}`}>
           {showHorizontal ? (
             <div className="flex gap-2 pb-1" style={{ overflowX: 'auto', whiteSpace: 'nowrap' }}>
-              {filteredTabs.map((tab) => {
-                const isUSAsset = ['VOO', 'VNQ', 'DVN', 'EVEX', 'O'].includes(tab);
-                
-                return (
+              {filteredTabs.map((tab) => (
                   <button
                     key={tab}
                     onClick={() => handleTabChange(tab)}
-                    className={`py-2 px-4 rounded whitespace-nowrap transition-colors ${
-                      activeTab === tab 
-                        ? 'bg-blue-600 text-white shadow-lg' 
-                        : isUSAsset 
-                          ? 'bg-indigo-700/50 text-indigo-200 hover:bg-indigo-600'
-                          : 'bg-slate-700/50 text-slate-300 hover:bg-slate-600'
-                    }`}
+                  className={`py-2 px-4 rounded whitespace-nowrap transition-colors ${getTabColor(tab)}`}
                   >
                     {tab}
                   </button>
-                );
-              })}
+              ))}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-              {filteredTabs.map((tab) => {
-                const isUSAsset = ['VOO', 'VNQ', 'DVN', 'EVEX', 'O'].includes(tab);
-                
-                return (
+              {filteredTabs.map((tab) => (
                   <button
                     key={tab}
                     onClick={() => handleTabChange(tab)}
-                    className={`py-2 px-3 rounded whitespace-nowrap transition-colors ${
-                      activeTab === tab 
-                        ? 'bg-blue-600 text-white shadow-lg' 
-                        : isUSAsset 
-                          ? 'bg-indigo-700/50 text-indigo-200 hover:bg-indigo-600'
-                          : 'bg-slate-700/50 text-slate-300 hover:bg-slate-600'
-                    }`}
+                  className={`py-2 px-3 rounded whitespace-nowrap transition-colors ${getTabColor(tab)}`}
                   >
                     {tab}
                   </button>
-                );
-              })}
+              ))}
             </div>
           )}
+        </div>
+
+        {/* Legenda de Cores */}
+        <div className="flex flex-wrap justify-center gap-4 mb-6">
+          {[
+            { label: 'FII', color: 'bg-green-700/70' },
+            { label: 'Ação BR', color: 'bg-violet-700/70' },
+            { label: 'Internacional', color: 'bg-orange-700/70' },
+            { label: 'Tesouro Direto', color: 'bg-emerald-700/70' }
+          ].map((item) => (
+            <div key={item.label} className="flex items-center gap-2">
+              <span className={`w-4 h-4 rounded ${item.color}`}></span>
+              <span className="text-slate-300 text-sm">{item.label}</span>
+            </div>
+          ))}
         </div>
 
         {/* Controles */}
@@ -691,47 +666,15 @@ function App() {
             
             <button
               onClick={() => setShowAddModal(true)}
-              disabled={!activeTab}
-              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
             >
               <Plus className="h-4 w-4" />
               <span>Nova Operação</span>
             </button>
             
             <button
-              onClick={() => setViewMode(viewMode === 'table' ? 'dashboard' : viewMode === 'dashboard' ? 'all' : 'table')}
-              className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-            >
-              {viewMode === 'table' ? (
-                <>
-                  <BarChart3 className="h-4 w-4" />
-                  <span>Dashboard</span>
-                </>
-              ) : viewMode === 'dashboard' ? (
-                <>
-                  <BarChart3 className="h-4 w-4" />
-                  <span>Tudo</span>
-                </>
-              ) : (
-                <>
-                  <Table className="h-4 w-4" />
-                  <span>Tabela</span>
-                </>
-              )}
-            </button>
-            
-            <button
-              onClick={exportSingleAsset}
-              disabled={!activeTab}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-            >
-              <FileDown className="h-4 w-4" />
-              <span>Excel {activeTab}</span>
-            </button>
-            
-            <button
               onClick={exportToExcel}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
             >
               <Download className="h-4 w-4" />
               <span>Excel Completo</span>
@@ -749,16 +692,6 @@ function App() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="bg-slate-800/40 backdrop-blur-sm border border-slate-700/50 rounded-lg py-2 pl-10 pr-4 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="bg-slate-800/40 backdrop-blur-sm border border-slate-700/50 rounded-lg py-2 pl-10 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -785,7 +718,7 @@ function App() {
               )}
               {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} />}
             </motion.div>
-          ) : viewMode === 'table' ? (
+          ) : (
             <motion.div
               key="table"
               layoutId="mainContent"
@@ -804,78 +737,6 @@ function App() {
                 readOnly={false}
               />
             </motion.div>
-          ) : (
-            <motion.div
-              key="dashboard"
-              layoutId="mainContent"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.5 }}
-              className="space-y-6"
-            >
-              {viewMode === 'all' ? (
-                <div className="space-y-12">
-                  {portfolios.map((portfolio) => (
-                    <div key={portfolio.ticker} className="mb-8 border-b border-slate-700 pb-8">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-2xl font-bold text-blue-400 flex items-center gap-2">
-                          {portfolio.ticker}
-                          <span className="text-sm px-2 py-1 rounded-full bg-slate-700">
-                            {portfolio.metadata?.pais === 'EUA' ? '🇺🇸' : '🇧🇷'}
-                          </span>
-                          <span className="text-sm text-slate-400">
-                            {portfolio.metadata?.nome}
-                          </span>
-                        </h2>
-                        <span className="text-lg font-bold text-white">
-                          {portfolio.currentPosition} cotas
-                        </span>
-                      </div>
-                      
-                      <InvestmentTable
-                        investments={portfolio.investments}
-                        metadata={portfolio.metadata}
-                        activeTab={portfolio.ticker} 
-                        onDataChange={handleDataChange}
-                        onEditInvestment={handleEditInvestment}
-                        readOnly={false}
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {portfolios.map((portfolio, index) => (
-                    <AssetCard 
-                      key={portfolio.ticker}
-                      portfolio={portfolio}
-                      onClick={() => setSelectedAsset(portfolio.ticker)}
-                      isActive={selectedAsset === portfolio.ticker}
-                      index={index}
-                    />
-                  ))}
-                </div>
-              )}
-              
-              {selectedAsset && (
-                <Summary 
-                  portfolio={portfolios.find(p => p.ticker === selectedAsset)!}
-                  marketData={null}
-                />
-              )}
-              
-              {!selectedAsset && (
-                <>
-                  <AdvancedDashboard portfolios={portfolios} />
-                  
-                  {/* Resumo Total da Carteira - No Final */}
-                  <div className="mt-12">
-                    <PortfolioSummary portfolios={portfolios} />
-                  </div>
-                </>
-              )}
-            </motion.div>
           )}
         </AnimatePresence>
       </main>
@@ -883,15 +744,13 @@ function App() {
       {/* Modais */}
       <AddInvestmentModal
         isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        activeTab={activeTab}
-        metadata={portfolios.find(p => p.ticker === activeTab)?.metadata ? {
-          ...portfolios.find(p => p.ticker === activeTab)!.metadata!,
-          id: activeTab,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        } as SupabaseAssetMetadata : null}
+        onClose={() => {
+          setShowAddModal(false);
+          setInitialTicker('');
+        }}
+        portfolios={portfolios}
         onSuccess={handleModalSuccess}
+        initialTicker={initialTicker}
       />
       
       <EditInvestmentModal
@@ -920,6 +779,7 @@ function App() {
         isOpen={showNewAssetModal}
         onClose={() => setShowNewAssetModal(false)}
         onSuccess={handleModalSuccess}
+        onOpenAddInvestment={handleOpenAddInvestmentFromAsset}
       />
     </div>
   );

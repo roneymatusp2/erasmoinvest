@@ -21,15 +21,20 @@ const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange }) => {
         <div className="flex justify-between items-center py-4">
           {/* Lado Esquerdo: Logo e Título */}
           <div className="flex items-center space-x-3">
-            <div className="bg-gradient-to-br from-yellow-400 to-yellow-600 p-2 rounded-lg shadow-lg">
-              <Trophy className="h-8 w-8 text-blue-900" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-yellow-300 to-yellow-100 bg-clip-text text-transparent">
-                Erasmo Invest
-              </h1>
-              <p className="text-blue-200 text-sm">Sistema de Gestão de Investimentos</p>
-            </div>
+            <button
+              onClick={() => onTabChange('overview')}
+              className="flex items-center space-x-3 hover:opacity-80 transition-opacity cursor-pointer"
+            >
+              <div className="bg-gradient-to-br from-yellow-400 to-yellow-600 p-2 rounded-lg shadow-lg">
+                <Trophy className="h-8 w-8 text-blue-900" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-yellow-300 to-yellow-100 bg-clip-text text-transparent">
+                  Erasmo Invest
+                </h1>
+                <p className="text-blue-200 text-sm">Sistema de Gestão de Investimentos</p>
+              </div>
+            </button>
           </div>
 
           {/* Lado Direito: Botão de Comando de Voz */}

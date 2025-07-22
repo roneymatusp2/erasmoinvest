@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { Investment, Portfolio } from '../types/investment';
-import { getMarketData } from './marketApi';
+import { marketApiService } from './marketApi';
 
 export const createInvestment = async (investment: Omit<Investment, 'id' | 'created_at' | 'updated_at'>): Promise<Investment | null> => {
   try {
@@ -101,57 +101,4 @@ export const calculateHistoricalDY = (investments: Investment[], index: number):
   return (totalDividends / accumulatedInvestment) * 100;
 };
 
-export const getPortfolioData = async (userId: string): Promise<Portfolio[]> => {
-  try {
-    const investments = await getInvestments(userId);
-    const portfolioMap = new Map<string, Portfolio>();
-
-    for (const investment of investments) {
-      const ticker = investment.ticker;
-      
-      if (!portfolioMap.has(ticker)) {
-        portfolioMap.set(ticker, {
-          ticker,
-          totalInvested: 0,
-          totalDividends: 0,
-          totalJuros: 0,
-          currentPosition: 0,
-          totalYield: 0,
-          marketValue: 0,
-          profit: 0,
-          profitPercent: 0,
-          investments: []
-        });
-      }
-
-      const portfolio = portfolioMap.get(ticker)!;
-      portfolio.investments.push(investment);
-      
-      const valorTotal = (investment.compra - investment.venda) * investment.valor_unit;
-      portfolio.totalInvested += valorTotal;
-      portfolio.totalDividends += investment.dividendos || 0;
-      portfolio.totalJuros += investment.juros || 0;
-      portfolio.currentPosition += (investment.compra - investment.venda);
-    }
-
-    const portfolios: Portfolio[] = [];
-    for (const [ticker, portfolio] of portfolioMap) {
-      const marketData = await getMarketData(ticker);
-      if (marketData) {
-        portfolio.marketValue = portfolio.currentPosition * marketData.price;
-        portfolio.profit = portfolio.marketValue - portfolio.totalInvested;
-        portfolio.profitPercent = portfolio.totalInvested > 0 ? (portfolio.profit / portfolio.totalInvested) * 100 : 0;
-      }
-      
-      portfolio.totalYield = portfolio.totalInvested > 0 ? 
-        ((portfolio.totalDividends + portfolio.totalJuros) / portfolio.totalInvested) * 100 : 0;
-      
-      portfolios.push(portfolio);
-    }
-
-    return portfolios;
-  } catch (error) {
-    console.error('Erro ao buscar dados do portfólio:', error);
-    return [];
-  }
-};
+// Removed broken getPortfolioData function - use portfolioService.getPortfolioSummary() instead

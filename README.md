@@ -50,6 +50,7 @@
 "Quantas ações da Vale eu tenho?"
 "Como está o Banco do Brasil?"
 "Mostre informações da Petrobras"
+"Como está o Tesouro Selic 2026?"  # 🏛️ Novo!
 ```
 
 #### **➕ Adicionar Investimentos**
@@ -57,6 +58,7 @@
 "Adicione 10 ações da Vale por 25 reais"
 "Comprei 5 ações do Banco do Brasil a 30,50"
 "Adicione 100 ações da Petrobras por 35 reais cada"
+"Comprei 1000 reais do Tesouro Selic 2026"  # 🏛️ Novo!
 ```
 
 ## 🏗️ **ARQUITETURA TÉCNICA**
@@ -154,7 +156,16 @@ supabase functions deploy transcribe-audio
 supabase functions deploy process-command
 supabase functions deploy execute-command
 supabase functions deploy text-to-speech
+supabase functions deploy tesouro-direto-proxy  # 🏛️ Novo!
 ```
+
+### **🏛️ Tesouro Direto Integration**
+Implementamos uma Edge Function para resolver problemas de CORS com a API do Tesouro Direto:
+
+- **Função**: `tesouro-direto-proxy`
+- **URL**: `https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/tesouro-direto-proxy`
+- **Propósito**: Proxy seguro para API oficial do Tesouro Direto
+- **Status**: ✅ Ativo e funcionando
 
 ## 📱 **DEPLOY**
 

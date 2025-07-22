@@ -43,7 +43,7 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ activeTab, onTabC
 
   const getAssetType = (ticker: string) => {
     if (ticker.includes('11')) return 'FII';
-    if (ticker.includes('3')) return 'AÇÃO';
+    if (ticker.includes('3') || ticker.includes('4')) return 'AÇÃO';
     if (['VNQ', 'VOO', 'DVN', 'EVEX', 'O'].includes(ticker)) return 'US';
     return 'OUTRO';
   };

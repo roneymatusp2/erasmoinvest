@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Search, Filter, Grid, List } from 'lucide-react';
 import { Portfolio } from '../types/investment';
+import { getAssetType } from '../utils/assetType';
 import AssetCard from './AssetCard';
 import Summary from './Summary';
 
@@ -25,42 +26,22 @@ const PortfolioTab: React.FC<PortfolioTabProps> = ({
   const filteredPortfolios = portfolios.filter(portfolio => {
     const matchesSearch = portfolio.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
       portfolio.metadata?.nome?.toLowerCase().includes(searchTerm.toLowerCase());
-    
     if (!matchesSearch) return false;
     
     if (filterType === 'ALL') return true;
     
-    let type = 'OUTRO';
-    
-    // Verificar primeiro se tem metadados
-    if (portfolio.metadata?.tipo) {
-      switch (portfolio.metadata.tipo) {
-        case 'FII':
-          type = 'FII';
-          break;
-        case 'ACAO':
-          type = 'ACAO_BR';
-          break;
-        case 'STOCK':
-        case 'ETF':
-        case 'REIT':
-          type = 'EUA';
-          break;
-        case 'TESOURO_DIRETO':
-          type = 'TESOURO_DIRETO';
-          break;
-        default:
-          type = 'OUTRO';
-      }
-    } else {
-      // Fallback para lógica anterior se não tem metadados
-      if (portfolio.ticker.endsWith('11')) type = 'FII';
-      else if (portfolio.ticker.endsWith('3') || portfolio.ticker.endsWith('4')) type = 'ACAO_BR';
-      else if (['VOO', 'VNQ', 'DVN', 'EVEX', 'O'].includes(portfolio.ticker)) type = 'EUA';
-      else if (portfolio.ticker.includes('TESOURO')) type = 'TESOURO_DIRETO';
-    }
-    
-    return type === filterType;
+    const tipo = getAssetType(portfolio.ticker, portfolio.metadata);
+    const mapped = tipo === 'FII'
+      ? 'FII'
+      : tipo === 'TESOURO_DIRETO'
+      ? 'TESOURO_DIRETO'
+      : tipo === 'ACAO'
+      ? 'ACAO_BR'
+      : ['ETF', 'REIT', 'STOCK'].includes(tipo)
+      ? 'EUA'
+      : 'OUTRO';
+
+    return mapped === filterType;
   });
 
   // Portfolios ativos (com posição > 0)
@@ -163,42 +144,39 @@ const PortfolioTab: React.FC<PortfolioTabProps> = ({
         <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-slate-700/50">
           <div className="text-center">
             <div className="text-2xl font-bold text-blue-400">{activePortfolios.length}</div>
-            <div className="text-sm text-slate-400">Ativos Ativos</div>
+            <div className="text-sm text-slate-400">Ativos</div>
           </div>
           
           <div className="text-center">
             <div className="text-2xl font-bold text-green-400">
-              {filteredPortfolios.filter(p => 
-                p.metadata?.tipo === 'FII' || (!p.metadata && p.ticker.endsWith('11'))
-              ).length}
+              {filteredPortfolios.filter(p => {
+                const tipo = getAssetType(p.ticker, p.metadata);
+                return tipo === 'FII';
+              }).length}
             </div>
             <div className="text-sm text-slate-400">FIIs</div>
           </div>
           
           <div className="text-center">
             <div className="text-2xl font-bold text-purple-400">
-              {filteredPortfolios.filter(p => 
-                p.metadata?.tipo === 'ACAO' || (!p.metadata && (p.ticker.endsWith('3') || p.ticker.endsWith('4')))
-              ).length}
+              {filteredPortfolios.filter(p => {
+                const tipo = getAssetType(p.ticker, p.metadata);
+                return tipo === 'ACAO';
+              }).length}
             </div>
             <div className="text-sm text-slate-400">Ações BR</div>
           </div>
           
           <div className="text-center">
             <div className="text-2xl font-bold text-orange-400">
-              {filteredPortfolios.filter(p => 
-                ['STOCK', 'ETF', 'REIT'].includes(p.metadata?.tipo) || 
-                (!p.metadata && ['VOO', 'VNQ', 'DVN', 'EVEX', 'O'].includes(p.ticker))
-              ).length}
+              {filteredPortfolios.filter(p => ['ETF', 'REIT', 'STOCK'].includes(getAssetType(p.ticker, p.metadata))).length}
             </div>
             <div className="text-sm text-slate-400">Internacional</div>
           </div>
           
           <div className="text-center">
             <div className="text-2xl font-bold text-emerald-400">
-              {filteredPortfolios.filter(p => 
-                p.metadata?.tipo === 'TESOURO_DIRETO' || (!p.metadata && p.ticker.includes('TESOURO'))
-              ).length}
+              {filteredPortfolios.filter(p => getAssetType(p.ticker, p.metadata) === 'TESOURO_DIRETO').length}
             </div>
             <div className="text-sm text-slate-400">Tesouro</div>
           </div>

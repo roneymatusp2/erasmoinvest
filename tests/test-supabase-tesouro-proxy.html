@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste da Edge Function - Tesouro Direto Proxy</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #0f172a;
+            color: white;
+        }
+        
+        .container {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        
+        button:hover {
+            background: #2563eb;
+        }
+        
+        .success {
+            color: #10b981;
+        }
+        
+        .error {
+            color: #ef4444;
+        }
+        
+        .info {
+            color: #06b6d4;
+        }
+        
+        pre {
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        
+        .status.success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid #10b981;
+        }
+        
+        .status.error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #ef4444;
+        }
+        
+        .status.info {
+            background: rgba(6, 182, 212, 0.1);
+            border: 1px solid #06b6d4;
+        }
+    </style>
+</head>
+<body>
+    <h1>🏛️ Teste da Edge Function - Tesouro Direto Proxy</h1>
+    
+    <div class="container">
+        <h2>Status da Implementação</h2>
+        <div class="status success">
+            ✅ Edge Function "tesouro-direto-proxy" criada no Supabase<br>
+            ✅ Função marketApi.ts atualizada para usar a Edge Function<br>
+            ✅ Sistema preparado para resolver problemas de CORS
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Teste da Edge Function</h2>
+        <p>Clique no botão abaixo para testar se a Edge Function está funcionando corretamente:</p>
+        
+        <button onclick="testSupabaseProxy()">🧪 Testar Edge Function</button>
+        <button onclick="testDirectAPI()">🔗 Testar API Direta (para comparação)</button>
+        <button onclick="clearResults()">🗑️ Limpar Resultados</button>
+        
+        <div id="results"></div>
+    </div>
+
+    <div class="container">
+        <h2>Teste Específico do Investimento</h2>
+        <p>Teste com o título específico que está no banco de dados:</p>
+        <input type="text" id="tickerInput" placeholder="TESOURO SELIC 2026" value="TESOURO SELIC 2026" style="padding: 10px; border-radius: 5px; border: 1px solid #374151; background: #374151; color: white; width: 300px;">
+        <button onclick="testSpecificTitle()">🎯 Testar Título Específico</button>
+    </div>
+
+    <script>
+        const SUPABASE_FUNCTION_URL = 'https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/tesouro-direto-proxy';
+        const DIRECT_API_URL = 'https://www.tesourodireto.com.br/json/br/com/b3/tesourodireto/service/api/v2/tesouros.json';
+
+        function log(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString('pt-BR');
+            const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : '📝';
+            
+            div.innerHTML = `<strong>[${timestamp}] ${icon} ${message}</strong>`;
+            results.appendChild(div);
+            
+            // Auto-scroll to bottom
+            results.scrollTop = results.scrollHeight;
+        }
+
+        function logJSON(data, title = 'Resposta') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.innerHTML = `
+                <h3>${title}:</h3>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            results.appendChild(div);
+        }
+
+        async function testSupabaseProxy() {
+            log('🚀 Iniciando teste da Edge Function do Supabase...', 'info');
+            
+            try {
+                log('📡 Fazendo requisição para: ' + SUPABASE_FUNCTION_URL, 'info');
+                
+                const startTime = performance.now();
+                const response = await fetch(SUPABASE_FUNCTION_URL);
+                const endTime = performance.now();
+                
+                log(`⏱️ Tempo de resposta: ${(endTime - startTime).toFixed(2)}ms`, 'info');
+                log(`📊 Status HTTP: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                log('✅ Edge Function funcionando corretamente!', 'success');
+                log(`📈 Total de títulos recebidos: ${data.response?.TrsrBdTradgList?.length || 0}`, 'success');
+                
+                // Mostrar primeiros títulos
+                if (data.response?.TrsrBdTradgList?.length > 0) {
+                    const primeiros5 = data.response.TrsrBdTradgList.slice(0, 5).map(t => t.TrsrBd?.nm);
+                    log(`📋 Primeiros títulos: ${primeiros5.join(', ')}`, 'info');
+                }
+                
+                logJSON(data.response?.TrsrBdTradgList?.slice(0, 2) || [], 'Exemplo de 2 títulos');
+                
+            } catch (error) {
+                log(`❌ Erro na Edge Function: ${error.message}`, 'error');
+                console.error('Erro completo:', error);
+            }
+        }
+
+        async function testDirectAPI() {
+            log('🔗 Testando API direta (pode dar erro de CORS)...', 'info');
+            
+            try {
+                const startTime = performance.now();
+                const response = await fetch(DIRECT_API_URL);
+                const endTime = performance.now();
+                
+                log(`⏱️ Tempo de resposta: ${(endTime - startTime).toFixed(2)}ms`, 'info');
+                log(`📊 Status HTTP: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                
+                const data = await response.json();
+                log('✅ API direta funcionou (sem problema de CORS)', 'success');
+                log(`📈 Total de títulos: ${data.response?.TrsrBdTradgList?.length || 0}`, 'success');
+                
+            } catch (error) {
+                log(`❌ Erro na API direta (provavelmente CORS): ${error.message}`, 'error');
+                log('💡 Isso é esperado! Por isso criamos a Edge Function.', 'info');
+            }
+        }
+
+        async function testSpecificTitle() {
+            const ticker = document.getElementById('tickerInput').value.trim();
+            if (!ticker) {
+                log('⚠️ Digite um ticker para testar', 'error');
+                return;
+            }
+
+            log(`🎯 Testando busca específica por: "${ticker}"`, 'info');
+            
+            try {
+                const response = await fetch(SUPABASE_FUNCTION_URL);
+                const data = await response.json();
+                
+                if (!data.response?.TrsrBdTradgList) {
+                    throw new Error('Estrutura de resposta inválida');
+                }
+                
+                // Buscar o título específico
+                const titulo = data.response.TrsrBdTradgList.find(t => 
+                    t.TrsrBd?.nm === ticker || 
+                    t.TrsrBd?.nm?.includes(ticker) ||
+                    ticker.includes(t.TrsrBd?.nm)
+                );
+                
+                if (titulo) {
+                    log(`✅ Título encontrado: ${titulo.TrsrBd?.nm}`, 'success');
+                    log(`💰 Valor: R$ ${titulo.TrsrBd?.untrRedVal || titulo.TrsrBd?.minInvstmtAmt}`, 'success');
+                    log(`📅 Vencimento: ${titulo.TrsrBd?.mtrtyDt || 'N/A'}`, 'info');
+                    
+                    logJSON(titulo, `Dados completos de "${ticker}"`);
+                } else {
+                    log(`❌ Título "${ticker}" não encontrado`, 'error');
+                    
+                    // Mostrar títulos similares
+                    const similares = data.response.TrsrBdTradgList.filter(t => 
+                        t.TrsrBd?.nm?.toLowerCase().includes('selic') ||
+                        t.TrsrBd?.nm?.toLowerCase().includes('tesouro')
+                    ).slice(0, 5);
+                    
+                    if (similares.length > 0) {
+                        const nomes = similares.map(t => t.TrsrBd?.nm);
+                        log(`💡 Títulos similares encontrados: ${nomes.join(', ')}`, 'info');
+                    }
+                }
+                
+            } catch (error) {
+                log(`❌ Erro no teste específico: ${error.message}`, 'error');
+            }
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            log('🗑️ Resultados limpos', 'info');
+        }
+
+        // Teste automático ao carregar a página
+        window.onload = function() {
+            log('🏛️ Página de teste carregada', 'info');
+            log('📋 Instruções:', 'info');
+            log('1. Teste a Edge Function para verificar se resolve CORS', 'info');
+            log('2. Compare com a API direta (que deve dar erro)', 'info');
+            log('3. Teste um título específico do seu investimento', 'info');
+        };
+    </script>
+</body>
+</html>

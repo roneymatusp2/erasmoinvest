@@ -5,6 +5,9 @@ export interface VoiceCommandCallbacks {
   onCommandResult?: (result: VoiceCommandResult) => void;
   onAudioStart?: () => void;
   onAudioEnd?: () => void;
+  onAudioPause?: () => void;
+  onAudioResume?: () => void;
+  onAudioProgress?: (currentTime: number, duration: number) => void;
   onError?: (error: string) => void;
 }
 
@@ -47,4 +50,20 @@ export interface SilenceDetectionConfig {
   silenceThreshold: number;
   silenceDuration: number;
   sampleRate: number;
+}
+
+export interface AudioConfig {
+  autoPlay?: boolean;
+  rate?: number;
+  pitch?: number;
+  volume?: number;
+  preferWebSpeech?: boolean;
+}
+
+export interface AudioState {
+  isPlaying: boolean;
+  isPaused: boolean;
+  currentTime: number;
+  duration: number;
+  volume: number;
 } 

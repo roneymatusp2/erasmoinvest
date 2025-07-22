@@ -26,6 +26,7 @@ import {
   PieChart as PieChartIcon
 } from 'lucide-react';
 import { Portfolio } from '../types/investment';
+import { getAssetType } from '../utils/assetType';
 
 interface AdvancedDashboardProps {
   portfolios: Portfolio[];
@@ -39,7 +40,7 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
     
     // Análise por tipo
     const porTipo = portfolios.reduce((acc, p) => {
-      const tipo = p.metadata.tipo;
+      const tipo = getAssetType(p.ticker, p.metadata);
       if (!acc[tipo]) {
         acc[tipo] = {
           tipo,
@@ -59,14 +60,14 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
     // Calcular percentuais e DY médio
     Object.keys(porTipo).forEach(tipo => {
       porTipo[tipo].percentual = (porTipo[tipo].valor_investido / totalInvestido) * 100;
-      const ativosDoTipo = portfolios.filter(p => p.metadata?.tipo === tipo);
+      const ativosDoTipo = portfolios.filter(p => getAssetType(p.ticker, p.metadata) === tipo);
       porTipo[tipo].dy_medio = ativosDoTipo.length > 0 ? 
         ativosDoTipo.reduce((sum, p) => sum + p.totalYield, 0) / ativosDoTipo.length : 0;
     });
 
     // Análise por país
     const porPais = portfolios.reduce((acc, p) => {
-      const pais = p.metadata?.pais || 'BRASIL';
+      const pais = p.metadata?.pais || (getAssetType(p.ticker, p.metadata) === 'TESOURO_DIRETO' ? 'BRASIL' : 'EUA');
       if (!acc[pais]) {
         acc[pais] = {
           pais,
@@ -84,7 +85,7 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
 
     Object.keys(porPais).forEach(pais => {
       porPais[pais].percentual = (porPais[pais].valor_investido / totalInvestido) * 100;
-      const ativosDoPais = portfolios.filter(p => p.metadata.pais === pais);
+      const ativosDoPais = portfolios.filter(p => (p.metadata?.pais || 'BRASIL') === pais);
       porPais[pais].dy_medio = ativosDoPais.length > 0 ? 
         ativosDoPais.reduce((sum, p) => sum + p.totalYield, 0) / ativosDoPais.length : 0;
     });
@@ -108,7 +109,7 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
 
     Object.keys(porSetor).forEach(setor => {
       porSetor[setor].percentual = (porSetor[setor].valor_investido / totalInvestido) * 100;
-      const ativosDoSetor = portfolios.filter(p => p.metadata.setor === setor);
+      const ativosDoSetor = portfolios.filter(p => (p.metadata?.setor || 'Outros') === setor);
       porSetor[setor].dy_medio = ativosDoSetor.length > 0 ? 
         ativosDoSetor.reduce((sum, p) => sum + p.totalYield, 0) / ativosDoSetor.length : 0;
     });
@@ -116,9 +117,9 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
     // Top performers
     const topPerformers = {
       maior_dy: [...portfolios].sort((a, b) => b.totalYield - a.totalYield).slice(0, 5),
-      maior_rentabilidade: [...portfolios].sort((a, b) => b.profitPercent - a.profitPercent).slice(0, 5),
+      maior_rentabilidade: [...portfolios].sort((a, b) => (b.profitPercent || 0) - (a.profitPercent || 0)).slice(0, 5),
       maior_renda_mensal: [...portfolios].sort((a, b) => (b.totalDividends + b.totalJuros) - (a.totalDividends + a.totalJuros)).slice(0, 5),
-      maior_crescimento: [...portfolios].sort((a, b) => b.profit - a.profit).slice(0, 5)
+      maior_crescimento: [...portfolios].sort((a, b) => (b.profit || 0) - (a.profit || 0)).slice(0, 5)
     };
 
     return {
@@ -139,9 +140,32 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
   }, [portfolios]);
 
   const pieColors = [
-    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', 
-    '#06b6d4', '#84cc16', '#f97316', '#ec4899', '#6366f1'
+    '#22c55e', // green
+    '#8b5cf6', // violet
+    '#f97316', // orange
+    '#059669', // emerald
   ];
+
+  // 🎨 Mapeamento de cores por tipo de ativo
+  const getTipoColor = (tipo: string): string => {
+    switch (tipo) {
+      case 'FII':
+        return '#22c55e'; // verde
+      case 'ACAO':
+        return '#8b5cf6'; // violeta
+      case 'TESOURO_DIRETO':
+        return '#059669'; // esmeralda
+      case 'ETF':
+      case 'REIT':
+      case 'STOCK':
+      default:
+        return '#f97316'; // laranja / internacional
+    }
+  };
+
+  const getPaisColor = (pais: string): string => {
+    return pais === 'BRASIL' ? '#3b82f6' : '#f97316';
+  };
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -150,18 +174,25 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
     }).format(value);
   };
 
-  const pieDataTipo = Object.values(analysis.por_tipo).map((item: any, index) => ({
-    name: item.tipo,
+  // 🔤 Ajustar nomes para exibição
+  const displayLabel = (tipo: string) => {
+    if (tipo === 'ACAO') return 'AÇÕES';
+    if (tipo === 'TESOURO_DIRETO') return 'TESOURO DIRETO';
+    return tipo;
+  };
+
+  const pieDataTipo = Object.values(analysis.por_tipo).map((item: any) => ({
+    name: displayLabel(item.tipo),
     value: item.valor_investido,
     percentage: item.percentual,
-    color: pieColors[index % pieColors.length]
+    color: getTipoColor(item.tipo)
   }));
 
-  const pieDataPais = Object.values(analysis.por_pais).map((item: any, index) => ({
+  const pieDataPais = Object.values(analysis.por_pais).map((item: any) => ({
     name: item.pais,
     value: item.valor_investido,
     percentage: item.percentual,
-    color: pieColors[index % pieColors.length]
+    color: getPaisColor(item.pais)
   }));
 
   const barDataSetor = Object.values(analysis.por_setor).map((item: any) => ({
@@ -171,16 +202,16 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
     percentage: item.percentual
   }));
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomPieTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
+      const entry = payload[0];
+      const name = entry.payload?.name || entry.name || '';
       return (
         <div className="bg-black/80 backdrop-blur-sm border border-white/20 rounded-xl p-4 shadow-2xl">
-          <p className="text-white font-medium">{`${label}`}</p>
-          {payload.map((entry: any, index: number) => (
-            <p key={index} className="text-sm" style={{ color: entry.color }}>
-              {`${entry.name}: ${entry.name === 'valor' ? formatCurrency(entry.value) : `${entry.value.toFixed(2)}%`}`}
+          <p className="text-white font-medium">{name}</p>
+          <p className="text-sm" style={{ color: entry.color }}>
+            {formatCurrency(entry.payload?.value || 0)}
             </p>
-          ))}
         </div>
       );
     }
@@ -206,6 +237,22 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
         {`${name.substring(0, 10)}${name.length > 10 ? '...' : ''} ${value > 0 ? ((value / analysis.resumo_geral.total_investido) * 100).toFixed(0) : 0}%`}
       </text>
     );
+  };
+
+  // Tooltip para barras
+  const CustomBarTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const entry = payload[0];
+      return (
+        <div className="bg-black/80 backdrop-blur-sm border border-white/20 rounded-xl p-4 shadow-2xl">
+          <p className="text-white font-medium">{entry.payload?.name}</p>
+          <p className="text-sm" style={{ color: entry.color }}>
+            {formatCurrency(entry.value || 0)}
+          </p>
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
@@ -300,10 +347,9 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
                 <PieChart>
                   <Pie
                     data={pieDataTipo}
-                    cx="50%"
+                    cx="40%"
                     cy="50%"
                     labelLine={false}
-                    label={renderCustomizedLabel}
                     outerRadius={100}
                     fill="#8884d8"
                     dataKey="value"
@@ -312,7 +358,8 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip content={<CustomTooltip />} />
+                  <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" />
+                  <Tooltip content={<CustomPieTooltip />} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -341,10 +388,9 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
                 <PieChart>
                   <Pie
                     data={pieDataPais}
-                    cx="50%"
+                    cx="40%"
                     cy="50%"
                     labelLine={false}
-                    label={renderCustomizedLabel}
                     outerRadius={100}
                     fill="#8884d8"
                     dataKey="value"
@@ -353,7 +399,8 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip content={<CustomTooltip />} />
+                  <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" />
+                  <Tooltip content={<CustomPieTooltip />} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -381,24 +428,11 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
           <div className="h-96">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={barDataSetor}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis 
-                  dataKey="name" 
-                  stroke="#9ca3af"
-                  fontSize={12}
-                  tick={{ fill: '#9ca3af' }}
-                />
-                <YAxis 
-                  stroke="#9ca3af"
-                  fontSize={12}
-                  tick={{ fill: '#9ca3af' }}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar 
-                  dataKey="valor" 
-                  fill="#3b82f6"
-                  radius={[4, 4, 0, 0]}
-                />
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                <Tooltip content={<CustomBarTooltip />} />
+                <Bar dataKey="valor" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -430,7 +464,7 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
                     <div className="text-yellow-400 font-bold text-lg">#{index + 1}</div>
                     <div>
                       <div className="font-semibold text-white">{portfolio.ticker}</div>
-                      <div className="text-sm text-neutral-400 truncate max-w-[200px]">{portfolio.metadata.nome}</div>
+                      <div className="text-sm text-neutral-400 truncate max-w-[200px]">{portfolio.metadata?.nome || portfolio.ticker}</div>
                     </div>
                   </div>
                   <div className="text-right">
@@ -466,14 +500,14 @@ const AdvancedDashboard: React.FC<AdvancedDashboardProps> = ({ portfolios }) => 
                     <div className="text-green-400 font-bold text-lg">#{index + 1}</div>
                     <div>
                       <div className="font-semibold text-white">{portfolio.ticker}</div>
-                      <div className="text-sm text-neutral-400 truncate max-w-[200px]">{portfolio.metadata.nome}</div>
+                      <div className="text-sm text-neutral-400 truncate max-w-[200px]">{portfolio.metadata?.nome || portfolio.ticker}</div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={`font-bold text-lg ${portfolio.profitPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {portfolio.profitPercent.toFixed(2)}%
+                    <div className={`font-bold text-lg ${(portfolio.profitPercent || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {(portfolio.profitPercent || 0).toFixed(2)}%
                     </div>
-                    <div className="text-sm text-neutral-400">{formatCurrency(portfolio.profit)}</div>
+                    <div className="text-sm text-neutral-400">{formatCurrency(portfolio.profit || 0)}</div>
                   </div>
                 </div>
               ))}

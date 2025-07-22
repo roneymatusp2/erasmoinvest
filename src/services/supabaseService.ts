@@ -1,545 +1,268 @@
 import { supabase } from '../lib/supabase';
 import { Database } from '../types/supabase';
+import { Portfolio } from '../types/investment';
+import { marketApiService } from './marketApi';
+import { toast } from 'sonner';
 
+// Tipos exportados para uso em outros lugares da aplicação
 export type AssetMetadata = Database['public']['Tables']['asset_metadata']['Row'];
 export type Investment = Database['public']['Tables']['investments']['Row'];
 
-export type InvestmentInsert = Database['public']['Tables']['investments']['Insert'];
-export type InvestmentUpdate = Database['public']['Tables']['investments']['Update'];
-
-// Tipo adaptado para trabalhar com a estrutura atual
-export interface AdaptedInvestment {
-  id: string;
-  ticker: string;
-  data: string;
-  tipo: 'COMPRA' | 'VENDA' | 'DIVIDENDO' | 'JUROS' | 'DESDOBRAMENTO';
-  quantidade: number;
-  valor_unitario: number;
-  valor_total: number;
-  dividendos: number;
-  juros: number;
-  impostos: number;
-  observacoes: string;
-  user_id: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// Verificar autenticação
-export const getCurrentUser = async () => {
-  try {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error) throw error;
-    return user;
-  } catch (error) {
-    console.error('Erro ao obter usuário:', error);
-    return null;
-  }
-};
-
-// Serviços para Asset Metadata
+/**
+ * Serviço para interagir com os metadados dos ativos.
+ */
 export const assetMetadataService = {
   async getAll(): Promise<AssetMetadata[]> {
     const { data, error } = await supabase
-      .from('asset_metadata')
-      .select('*')
-      .order('ticker', { ascending: true });
-    
-    if (error) throw error;
+        .from('asset_metadata')
+        .select('*')
+        .order('ticker', { ascending: true });
+
+    if (error) {
+      console.error('Erro ao buscar metadados:', error);
+      toast.error('Não foi possível carregar os metadados dos ativos.');
+      return [];
+    }
     return data || [];
   },
-
-  async getByTicker(ticker: string): Promise<AssetMetadata | null> {
-    const { data, error } = await supabase
-      .from('asset_metadata')
-      .select('*')
-      .eq('ticker', ticker)
-      .single();
-    
-    if (error) return null;
-    return data;
-  },
-
-  async create(metadata: Omit<AssetMetadata, 'created_at' | 'updated_at'>): Promise<AssetMetadata> {
-    const { data, error } = await supabase
-      .from('asset_metadata')
-      .insert(metadata)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
-  },
-
-  async update(ticker: string, updates: Partial<AssetMetadata>): Promise<AssetMetadata> {
-    const { data, error } = await supabase
-      .from('asset_metadata')
-      .update(updates)
-      .eq('ticker', ticker)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
-  }
 };
 
-// Função para converter entre formatos
-// 🔧 ADAPTADOR CORRIGIDO - Converte dados do banco para formato da aplicação
-const adaptInvestmentFromDB = (investment: Investment): AdaptedInvestment => {
-  const compra = Number(investment.compra) || 0;
-  const venda = Number(investment.venda) || 0;
-  const valor_unit = Number(investment.valor_unit) || 0;
-  
-  let tipo: AdaptedInvestment['tipo'] = 'COMPRA';
-  let quantidade = 0;
-  let valor_total = 0;
-
-  // 💰 LÓGICA CORRIGIDA: Determinar tipo baseado nos dados
-  if (compra > 0) {
-    tipo = 'COMPRA';
-    quantidade = compra;
-    valor_total = compra * valor_unit;
-  } else if (venda > 0) {
-    tipo = 'VENDA';
-    quantidade = venda;
-    valor_total = venda * valor_unit;
-  } else if ((investment.dividendos || 0) > 0) {
-    tipo = 'DIVIDENDO';
-    quantidade = 0;
-    valor_total = Number(investment.dividendos) || 0;
-  } else if ((investment.juros || 0) > 0) {
-    tipo = 'JUROS';
-    quantidade = 0;
-    valor_total = Number(investment.juros) || 0;
-  }
-
-  return {
-    id: investment.id || '',
-    ticker: investment.ticker,
-    data: investment.date?.toString() || '',
-    tipo,
-    quantidade,
-    valor_unitario: valor_unit,
-    valor_total,
-    dividendos: Number(investment.dividendos) || 0,
-    juros: Number(investment.juros) || 0,
-    impostos: Number((investment as any).impostos) || 0,
-    observacoes: investment.observacoes || '',
-    user_id: investment.user_id || '',
-    created_at: investment.created_at || '',
-    updated_at: investment.updated_at || ''
-  };
-};
-
-const adaptInvestmentToDB = (investment: Partial<AdaptedInvestment>): Partial<InvestmentInsert> => {
-  let compra = 0;
-  let venda = 0;
-
-  if (investment.tipo === 'COMPRA') {
-    compra = investment.quantidade || 0;
-  } else if (investment.tipo === 'VENDA') {
-    venda = investment.quantidade || 0;
-  }
-
-  return {
-    ticker: investment.ticker,
-    date: investment.data,
-    compra,
-    venda,
-    valor_unit: investment.valor_unitario,
-    dividendos: investment.dividendos,
-    juros: investment.juros,
-    observacoes: investment.observacoes || ''
-  };
-};
-
-// Serviços para Investments
+/**
+ * Serviço para interagir com a função SQL customizada no Supabase.
+ */
 export const investmentService = {
-  async getAll(): Promise<AdaptedInvestment[]> {
-    // Usar o user_id fixo do Erasmo se localStorage auth está ativo
-    const isLocalAuth = localStorage.getItem('erasmoInvestAuth') === 'true';
-    let userId = null;
-    
-    console.log('🔍 investmentService.getAll() - localStorage auth:', isLocalAuth);
-    
-    if (isLocalAuth) {
-      // User ID fixo do Erasmo Russo
-      userId = '4362da88-d01c-4ffe-a447-75751ea8e182';
-      console.log('✅ Usando user_id fixo:', userId);
-    } else {
-      const user = await getCurrentUser();
-      if (!user) throw new Error('Usuário não autenticado');
-      userId = user.id;
-      console.log('✅ Usando user_id do Supabase:', userId);
-    }
+  async getAll(userId: string): Promise<Portfolio[]> {
+    // A função RPC busca e já pré-calcula os dados no banco de dados.
+    const { data, error } = await supabase.rpc('get_investments_by_user_id', {
+      p_user_id: userId,
+    });
 
-    console.log('🔄 Fazendo query no Supabase para user_id:', userId);
-    const { data, error } = await supabase
-      .from('investments')
-      .select('*')
-      .eq('user_id', userId)
-      .order('date', { ascending: true });
-    
     if (error) {
-      console.error('❌ Erro na query Supabase:', error);
+      console.error('Erro ao chamar a função RPC do Supabase:', error);
+      toast.error('Erro ao buscar seus dados de investimento.');
       throw error;
     }
-    
-    console.log('📊 Dados retornados do Supabase:', data?.length, 'registros');
-    const adaptedData = (data || []).map(adaptInvestmentFromDB);
-    console.log('✅ Dados adaptados:', adaptedData.length, 'registros');
-    
-    return adaptedData;
-  },
 
-  async getByTicker(ticker: string): Promise<AdaptedInvestment[]> {
-    // Usar o user_id fixo do Erasmo se localStorage auth está ativo
-    const isLocalAuth = localStorage.getItem('erasmoInvestAuth') === 'true';
-    let userId = null;
-    
-    if (isLocalAuth) {
-      // User ID fixo do Erasmo Russo
-      userId = '4362da88-d01c-4ffe-a447-75751ea8e182';
-    } else {
-      const user = await getCurrentUser();
-      if (!user) throw new Error('Usuário não autenticado');
-      userId = user.id;
-    }
-
-    const { data, error } = await supabase
-      .from('investments')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('ticker', ticker)
-      .order('date', { ascending: true });
-    
-    if (error) throw error;
-    return (data || []).map(adaptInvestmentFromDB);
-  },
-
-  async create(investment: Partial<AdaptedInvestment>): Promise<AdaptedInvestment> {
-    // Usar o user_id fixo do Erasmo se localStorage auth está ativo
-    const isLocalAuth = localStorage.getItem('erasmoInvestAuth') === 'true';
-    let userId = null;
-    
-    if (isLocalAuth) {
-      // User ID fixo do Erasmo Russo
-      userId = '4362da88-d01c-4ffe-a447-75751ea8e182';
-      console.log('✅ CREATE usando user_id fixo:', userId);
-    } else {
-      const user = await getCurrentUser();
-      if (!user) throw new Error('Usuário não autenticado');
-      userId = user.id;
-    }
-
-    const dbInvestment = adaptInvestmentToDB(investment);
-    
-    const { data, error } = await supabase
-      .from('investments')
-      .insert({
-        ...dbInvestment,
-        user_id: userId
-      })
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return adaptInvestmentFromDB(data);
-  },
-
-  async update(id: string, updates: Partial<AdaptedInvestment>): Promise<AdaptedInvestment> {
-    // Usar o user_id fixo do Erasmo se localStorage auth está ativo
-    const isLocalAuth = localStorage.getItem('erasmoInvestAuth') === 'true';
-    let userId = null;
-    
-    if (isLocalAuth) {
-      // User ID fixo do Erasmo Russo
-      userId = '4362da88-d01c-4ffe-a447-75751ea8e182';
-      console.log('✅ UPDATE usando user_id fixo:', userId);
-    } else {
-      const user = await getCurrentUser();
-      if (!user) throw new Error('Usuário não autenticado');
-      userId = user.id;
-    }
-
-    const dbUpdates = adaptInvestmentToDB(updates);
-
-    const { data, error } = await supabase
-      .from('investments')
-      .update(dbUpdates)
-      .eq('id', id)
-      .eq('user_id', userId)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return adaptInvestmentFromDB(data);
-  },
-
-  async delete(id: string): Promise<void> {
-    console.log('🗑️ DELETE: Excluindo investimento ID:', id);
-    
-    const { error } = await supabase
-      .from('investments')
-      .delete()
-      .eq('id', id);
-    
-    if (error) {
-      console.error('❌ Erro no DELETE:', error);
-      throw error;
-    }
-    
-    console.log('✅ DELETE: Investimento excluído com sucesso');
+    // O retorno da RPC já está no formato de Portfolio[], então retornamos diretamente.
+    return data || [];
   }
 };
 
-// Serviços para cálculos de portfólio
+// Função de fallback para criar metadados básicos caso não existam no banco
+const createAutoMetadata = (ticker: string): AssetMetadata => {
+  const isUS = ['VOO', 'VNQ', 'DVN', 'EVEX', 'O', 'AAPL', 'MSFT'].includes(ticker);
+  const isTesouro = ticker.toUpperCase().includes('TESOURO');
+  
+  // Custom mappings para ativos conhecidos sem metadados no banco
+  const hardcodedMap: Record<string, Partial<AssetMetadata>> = {
+    'BRBI11': {
+      setor: 'Financeiro',
+      subsetor: 'Banco de Investimento',
+      segmento: 'Assessoria financeira',
+      categoria_dy: 'RENDA_VARIAVEL',
+    },
+    'BBDC3': {
+      setor: 'Financeiro',
+      subsetor: 'Banco Múltiplo',
+      segmento: 'Serviços Bancários',
+      categoria_dy: 'RENDA_VARIAVEL',
+    }
+  };
+
+  if (hardcodedMap[ticker.toUpperCase()]) {
+    const h = hardcodedMap[ticker.toUpperCase()];
+    return {
+      id: `auto-${ticker}`,
+      ticker,
+      nome: ticker,
+      tipo: ticker.endsWith('11') ? 'FII' : 'ACAO',
+      pais: 'BRASIL',
+      moeda: 'BRL',
+      setor: h.setor as string,
+      subsetor: h.subsetor || null,
+      segmento: h.segmento || null,
+      liquidez: 'MEDIA',
+      categoria_dy: h.categoria_dy as string,
+      benchmark: 'IBOVESPA',
+      isin: null,
+      cnpj: null,
+      gestora: null,
+      descricao: 'Metadado gerado automaticamente',
+      cor_tema: '#8b5cf6',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as AssetMetadata;
+  }
+
+  // Metadados específicos para Tesouro Direto
+  if (isTesouro) {
+    let tipoTesouro = 'SELIC';
+    if (ticker.toUpperCase().includes('IPCA')) tipoTesouro = 'IPCA';
+    if (ticker.toUpperCase().includes('PREFIXADO')) tipoTesouro = 'PREFIXADO';
+    
+    return {
+      id: `auto-${ticker}`,
+      ticker: ticker,
+      nome: ticker,
+      tipo: 'TESOURO_DIRETO',
+      pais: 'BRASIL',
+      moeda: 'BRL',
+      setor: 'Renda Fixa',
+      subsetor: 'Títulos Públicos',
+      segmento: 'Governo Federal',
+      liquidez: 'ALTA',
+      categoria_dy: 'RENDA_FIXA',
+      benchmark: tipoTesouro,
+      isin: null,
+      cnpj: null,
+      gestora: 'Tesouro Nacional',
+      descricao: `Título público ${tipoTesouro} do Tesouro Nacional`,
+      // campos extras omitidos para compatibilidade com tipos
+      site_oficial: null,
+      logo_url: null,
+      cor_tema: '#1e40af', // Azul para Títulos Públicos
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+  
+  // Metadados para outros ativos
+  return {
+    id: `auto-${ticker}`,
+    ticker: ticker,
+    nome: ticker,
+    tipo: isUS ? 'STOCK' : ticker.endsWith('11') ? 'FII' : 'ACAO',
+    pais: isUS ? 'EUA' : 'BRASIL',
+    moeda: isUS ? 'USD' : 'BRL',
+    setor: 'Desconhecido',
+    subsetor: null,
+    segmento: null,
+    liquidez: 'MEDIA',
+    categoria_dy: 'RENDA_VARIAVEL',
+    benchmark: 'N/A',
+    isin: null,
+    cnpj: null,
+    gestora: null,
+    descricao: 'Metadado gerado automaticamente',
+    // campos extras omitidos
+    site_oficial: null,
+    logo_url: null,
+    cor_tema: '#64748b',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+};
+
+/**
+ * O serviço principal do portfólio, responsável por orquestrar toda a lógica de negócios.
+ */
 export const portfolioService = {
-  async getPortfolioSummary() {
-    console.log('🔧 ERASMO INVEST - Configurações:');
-    console.log('🌐 SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL || 'NÃO DEFINIDA');
-    console.log('🔑 SUPABASE_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY ? 'DEFINIDA' : 'NÃO DEFINIDA');
-    console.log('🔒 Auth Estado:', localStorage.getItem('erasmoInvestAuth'));
+  async getPortfolioSummary(): Promise<Portfolio[]> {
+    console.log('🚀 [CORE] Iniciando cálculo completo do portfólio...');
 
-    console.log('🚀 ERASMO INVEST - Iniciando carregamento de dados...');
-    console.log('📊 Portfolio Service: DISPONÍVEL');
-    console.log('🔧 Use Local Data:', localStorage.getItem('erasmoInvestAuth') === 'true');
-    
-    const isLocalAuth = localStorage.getItem('erasmoInvestAuth') === 'true';
-    
-    if (!isLocalAuth) {
-      console.log('⚠️ Usuário não autenticado no localStorage, usando dados demo');
-      return this.getDemoPortfolio();
-    }
-
-    // Tentar obter usuário do Supabase, mas não bloquear se falhar
-    const user = await getCurrentUser();
-    if (!user) {
-      console.log('⚠️ Usuário Supabase não encontrado, mas localStorage válido - carregando dados reais');
-    }
+    const userId = '4362da88-d01c-4ffe-a447-75751ea8e182';
 
     try {
-      console.log('🔄 Tentando conectar com Supabase...');
+      console.log('🔄 [CORE] Buscando dados do Supabase e taxa de câmbio...');
       
-      const investments = await investmentService.getAll();
-      const metadata = await assetMetadataService.getAll();
-      
-      console.log('📊 Dados carregados do Supabase:', investments?.length || 0, 'investimentos');
-      console.log('📋 Metadados disponíveis:', metadata?.length || 0, 'ativos');
-      
-      // Se não há investimentos, usar dados demo
-      if (!investments || investments.length === 0) {
-        console.log('⚠️ Nenhum investimento encontrado, usando dados demo');
-        return this.getDemoPortfolio();
-      }
+      // 1. Busca todos os dados já pré-calculados e a taxa de câmbio em paralelo
+      const [portfoliosFromRPC, metadata, usdToBrlRate] = await Promise.all([
+        investmentService.getAll(userId),
+        assetMetadataService.getAll(),
+        marketApiService.getUSDBRLExchangeRate(),
+      ]);
 
-      // Função para criar metadata automática quando não existe
-      const createAutoMetadata = (ticker: string): AssetMetadata => {
-        const isFII = ticker.endsWith('11');
-        const isBrazilianStock = ticker.endsWith('3') || ticker.endsWith('4') || ticker.endsWith('11');
-        const isUS = !isBrazilianStock && (ticker.length <= 5 || ['DVN', 'EVEX', 'O', 'VOO', 'VNQ'].includes(ticker));
-        
-        // Mapeamento de nomes conhecidos
-        const knownNames: Record<string, string> = {
-          'BBAS3': 'Banco do Brasil S.A.',
-          'BBDC3': 'Banco Bradesco S.A.',
-          'BBDC4': 'Banco Bradesco S.A.',
-          'BBSE3': 'BB Seguridade Participações S.A.',
-          'B3SA3': 'B3 S.A. - Brasil, Bolsa, Balcão',
-          'CPFE3': 'CPFL Energia S.A.',
-          'EGIE3': 'Engie Brasil Energia S.A.',
-          'FLRY3': 'Fleury S.A.',
-          'ODPV3': 'Odontoprev S.A.',
-          'PSSA3': 'Porto Seguro S.A.',
-          'RADL3': 'Raia Drogasil S.A.',
-          'VALE3': 'Vale S.A.',
-          'WEGE3': 'WEG S.A.',
-          'VOO': 'Vanguard S&P 500 ETF',
-          'VNQ': 'Vanguard Real Estate ETF',
-          'DVN': 'Devon Energy Corporation',
-          'EVEX': 'Eve Holding Inc.',
-          'O': 'Realty Income Corporation'
-        };
-        
-        return {
-          id: `auto-${ticker}`,
-          ticker,
-          nome: knownNames[ticker] || ticker,
-          tipo: isFII ? 'FII' : (isUS ? 'STOCK' : 'ACAO') as 'FII' | 'ACAO' | 'ETF' | 'REIT' | 'STOCK',
-          pais: isUS ? 'EUA' : 'BRASIL' as 'BRASIL' | 'EUA' | 'GLOBAL',
-          moeda: isUS ? 'USD' : 'BRL' as 'BRL' | 'USD',
-          setor: isFII ? 'Fundos Imobiliários' : (isUS ? 'Technology' : 'Diversos'),
-          subsetor: null,
-          segmento: null,
-          liquidez: 'MEDIA',
-          categoria_dy: isFII ? 'RENDA_FIXA' : 'RENDA_VARIAVEL',
-          benchmark: isUS ? 'S&P500' : 'IBOVESPA',
-          isin: null,
-          cnpj: null,
-          gestora: null,
-          descricao: `Ativo ${ticker} - Metadata gerada automaticamente`,
-          site_oficial: null,
-          cor_tema: isFII ? '#3b82f6' : (isUS ? '#10b981' : '#f59e0b'),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-      };
-      
-      const portfolioMap = new Map<string, {
-        ticker: string;
-        metadata: AssetMetadata;
-        investments: AdaptedInvestment[];
-        totalInvested: number;
-        currentPosition: number;
-        totalDividends: number;
-        totalJuros: number;
-        totalImpostos: number;
-        totalYield: number;
-        marketValue: number;
-        profit: number;
-        profitPercent: number;
-      }>();
+      console.log(`📊 [CORE] Dados recebidos: ${portfoliosFromRPC.length} portfólios`);
+      console.log(`💲 [CORE] Taxa de câmbio USD-BRL: ${usdToBrlRate}`);
+      console.log(`📝 [CORE] Metadados carregados: ${metadata.length} ativos`);
 
-      // Agrupar investimentos por ticker - INCLUINDO TODOS OS TICKERS
-      for (const investment of investments) {
-        const ticker = investment.ticker;
-        let assetMeta = metadata.find(m => m.ticker === ticker);
-        
-        // Se não tem metadados, criar automaticamente
-        if (!assetMeta) {
-          console.log(`🔧 Criando metadata automática para: ${ticker}`);
-          assetMeta = createAutoMetadata(ticker);
-        }
-
-        if (!portfolioMap.has(ticker)) {
-          portfolioMap.set(ticker, {
-            ticker,
-            metadata: assetMeta,
-            investments: [],
-            totalInvested: 0,
-            currentPosition: 0,
-            totalDividends: 0,
-            totalJuros: 0,
-            totalImpostos: 0,
-            totalYield: 0,
-            marketValue: 0,
-            profit: 0,
-            profitPercent: 0
-          });
-        }
-
-        const portfolio = portfolioMap.get(ticker)!;
-        portfolio.investments.push(investment);
-
-        // 🔧 CÁLCULOS CORRIGIDOS - Separar valor investido de posição atual
-        switch (investment.tipo) {
-          case 'COMPRA':
-            portfolio.totalInvested += investment.valor_total; // Soma o valor gasto
-            portfolio.currentPosition += investment.quantidade; // Soma as cotas
-            break;
-          case 'VENDA':
-            // CORREÇÃO: Para vendas, não diminuir totalInvested pois é valor recebido
-            // totalInvested deve representar quanto foi gasto (não recebido)
-            portfolio.currentPosition -= investment.quantidade; // Remove as cotas vendidas
-            break;
-          case 'DIVIDENDO':
-            portfolio.totalDividends += investment.dividendos;
-            break;
-          case 'JUROS':
-            portfolio.totalJuros += investment.juros;
-            break;
-          case 'DESDOBRAMENTO':
-            portfolio.currentPosition += investment.quantidade; // Adiciona cotas do desdobramento
-            break;
-        }
-      }
-
-      // 💰 CALCULAR MÉTRICAS FINAIS COM DADOS REAIS DE MERCADO
-      const portfolios = Array.from(portfolioMap.values()).map(portfolio => {
-        const totalProventos = portfolio.totalDividends + portfolio.totalJuros;
-        
-        // ✅ CORREÇÃO: Yield baseado no valor investido (não absoluto)
-        portfolio.totalYield = portfolio.totalInvested > 0 ? (totalProventos / portfolio.totalInvested) * 100 : 0;
-        
-        // 📊 VALOR DE MERCADO: Usar preço médio de compra como base (será atualizado com API real)
-        const averageBuyPrice = portfolio.currentPosition > 0 ? portfolio.totalInvested / portfolio.currentPosition : 0;
-        portfolio.marketValue = portfolio.currentPosition * averageBuyPrice; // Base inicial
-        
-        // 💸 LUCRO/PREJUÍZO: Valor atual - Valor investido
-        portfolio.profit = portfolio.marketValue - portfolio.totalInvested;
-        portfolio.profitPercent = portfolio.totalInvested > 0 ? (portfolio.profit / portfolio.totalInvested) * 100 : 0;
-        
-        return portfolio;
+      // 2. Anexa os metadados aos portfólios recebidos
+      const portfoliosWithMetadata = portfoliosFromRPC.map(p => {
+        const meta = metadata.find(m => m.ticker === p.ticker);
+        return { ...p, metadata: meta || createAutoMetadata(p.ticker) };
       });
 
-      console.log('✅ Dados carregados do Supabase:', portfolios.length, 'ativos únicos processados');
+      console.log('💹 [CORE] Buscando dados de mercado para todos os ativos...');
       
-      // Filtrar apenas ativos com posição atual > 0 (ainda possui)
-      const activePortfolios = portfolios.filter(p => p.currentPosition > 0);
-      console.log('📊 Ativos ativos (posição > 0):', activePortfolios.length);
+      // 3. Busca os preços de mercado para todos os ativos de uma vez
+      const marketDataMap = await marketApiService.getMultipleMarketData(portfoliosWithMetadata);
       
-      // 💰 FORÇAR ATUALIZAÇÃO COM DADOS REAIS DE MERCADO
-      console.log('🚀 === FORÇANDO ATUALIZAÇÃO COM APIS REAIS ===');
-      
-      try {
-        const { updatePortfoliosWithMarketData } = await import('./portfolioCalculator');
-        console.log('✅ Módulo portfolioCalculator importado');
-        
-        const portfoliosWithMarketData = await updatePortfoliosWithMarketData(activePortfolios);
-        console.log('✅ Portfolios atualizados com market data:', portfoliosWithMarketData.length);
-        
-        return portfoliosWithMarketData.sort((a, b) => a.ticker.localeCompare(b.ticker));
-      } catch (error) {
-        console.error('❌ Erro na integração market data, usando dados básicos:', error);
-        return activePortfolios.sort((a, b) => a.ticker.localeCompare(b.ticker));
+      console.log(`✅ [CORE] Dados de mercado obtidos para ${marketDataMap.size}/${portfoliosWithMetadata.length} ativos`);
+
+      const finalPortfolios: Portfolio[] = [];
+      let totalConvertedValue = 0;
+      let totalUSAssets = 0;
+
+      for (const portfolio of portfoliosWithMetadata) {
+        const marketData = marketDataMap.get(portfolio.ticker);
+        const isUSAsset = ['VOO', 'VNQ', 'DVN', 'EVEX', 'O', 'AAPL', 'MSFT'].includes(portfolio.ticker);
+
+        if (marketData) {
+          portfolio.currentPrice = marketData.currentPrice;
+          portfolio.priceChangePercent = marketData.priceChangePercent;
+          portfolio.marketValue = portfolio.currentPosition * portfolio.currentPrice;
+          portfolio.moeda = marketData.currency as 'BRL' | 'USD';
+        } else {
+          // Fallback para ativos sem dados de mercado
+          portfolio.currentPrice = portfolio.averagePrice || 0;
+          portfolio.priceChangePercent = 0;
+          portfolio.marketValue = portfolio.currentPosition * (portfolio.averagePrice || 0);
+          portfolio.moeda = isUSAsset ? 'USD' : 'BRL';
+        }
+
+        // ✅ LÓGICA DE CONVERSÃO DE CÂMBIO PARA ATIVOS AMERICANOS
+        if (isUSAsset || portfolio.moeda === 'USD') {
+          totalUSAssets++;
+          const originalValue = portfolio.marketValue;
+          
+          console.log(`🇺🇸 Convertendo ${portfolio.ticker} de USD para BRL (Taxa: ${usdToBrlRate})`);
+          console.log(`   - Valor original USD: ${(originalValue / usdToBrlRate).toLocaleString('en-US', {minimumFractionDigits: 2})}`);
+          
+          // Converter todos os valores de USD para BRL
+          portfolio.totalInvested *= usdToBrlRate;
+          portfolio.marketValue *= usdToBrlRate;
+          portfolio.totalDividends *= usdToBrlRate;
+          portfolio.totalJuros *= usdToBrlRate;
+          portfolio.averagePrice *= usdToBrlRate;
+          portfolio.currentPrice *= usdToBrlRate;
+          
+          totalConvertedValue += portfolio.marketValue;
+          
+          // Marcar como convertido para BRL
+          portfolio.moeda = 'BRL';
+          
+          console.log(`   - Valor convertido BRL: R$ ${portfolio.marketValue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
+          console.log(`✅ ${portfolio.ticker} convertido com sucesso`);
+        }
+
+        // Recalcular lucro e rentabilidade após conversão
+        portfolio.profit = portfolio.marketValue - portfolio.totalInvested;
+        portfolio.profitPercent = portfolio.totalInvested > 0 ? (portfolio.profit / portfolio.totalInvested) * 100 : 0;
+
+        // Recalcular yield total
+        const totalProventos = portfolio.totalDividends + portfolio.totalJuros;
+        portfolio.totalYield = portfolio.totalInvested > 0 ? (totalProventos / portfolio.totalInvested) * 100 : 0;
+
+        if (portfolio.currentPosition > 0) {
+          finalPortfolios.push(portfolio);
+        }
       }
+
+      console.log(`🔄 [CORE] Processamento de conversão concluído:`);
+      console.log(`   - Ativos americanos convertidos: ${totalUSAssets}`);
+      console.log(`   - Valor total convertido: R$ ${totalConvertedValue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
+      console.log(`✅ [CORE] Processamento finalizado. Retornando ${finalPortfolios.length} ativos.`);
+      
+      return finalPortfolios.sort((a, b) => a.ticker.localeCompare(b.ticker));
+
     } catch (error) {
-      console.error('❌ ERRO NO SUPABASE:', error);
-      console.log('🔄 Fallback para dados locais...');
-      return this.getDemoPortfolio();
+      console.error('❌ [CORE] Erro fatal no cálculo do portfólio:', error);
+      if (error instanceof Error) {
+        console.error('❌ [CORE] Detalhes do erro:', error.message);
+        console.error('❌ [CORE] Stack trace:', error.stack);
+      }
+      toast.error("Ocorreu um erro grave ao buscar seus dados.");
+      return [];
     }
   },
-
-  async getDemoPortfolio() {
-    const metadata = await assetMetadataService.getAll();
-    
-    return metadata.slice(0, 4).map(meta => ({
-      ticker: meta.ticker,
-      metadata: meta,
-      investments: [],
-      totalInvested: 10000 + Math.random() * 5000,
-      currentPosition: 100 + Math.random() * 50,
-      totalDividends: 500 + Math.random() * 300,
-      totalJuros: 0,
-      totalImpostos: 0,
-      totalYield: 8 + Math.random() * 4,
-      marketValue: 11000 + Math.random() * 3000,
-      profit: 1000 + Math.random() * 1000,
-      profitPercent: 8 + Math.random() * 6
-    }));
-  }
-};
-
-// Serviço para autenticação
-export const authService = {
-  async signInWithEmailAndPassword(email: string, password: string) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-    
-    if (error) throw error;
-    return data;
-  },
-
-  async signOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-    localStorage.removeItem('erasmoInvestAuth');
-  },
-
-  async getCurrentUser() {
-    return getCurrentUser();
-  }
 };

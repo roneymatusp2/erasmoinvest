@@ -1,0 +1,7 @@
+# Remover manualmente estes arquivos antigos da pasta migrations:
+# - 20250121000001_fix_valor_total.sql
+# - 20250121000002_alternative_fix.sql  
+# - 20250121000003_simple_fix.sql
+
+# Manter apenas:
+# - 20250121000000_fix_investment_calculations.sql

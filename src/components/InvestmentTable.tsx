@@ -4,6 +4,7 @@ import { Edit, Trash2, Save, X, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { investmentService } from '../services/supabaseService';
 import AssetDetails from './AssetDetails';
+import PrecisionCalc from '../utils/precisionCalc';
 
 interface InvestmentTableProps {
   activeTab: string;
@@ -28,8 +29,8 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
   const [editData, setEditData] = useState<any>(null);
 
   const formatNumber = (num: number, decimals = 2) => {
-    if (num === 0 || num === null || num === undefined) return '';
-    return num.toFixed(decimals).replace('.', ',');
+    if (num === 0 || num === null || num === undefined) return '0,00';
+    return PrecisionCalc.formatNumber(num, decimals);
   };
 
   const formatDate = (dateStr: string) => {
@@ -40,21 +41,21 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
 
   const calculateHistoricalDY = (data: any[], index: number): number => {
     const row = data[index];
-    const totalDividends = row.dividendos + row.juros;
+    const totalDividends = PrecisionCalc.add(row.dividendos || 0, row.juros || 0);
     
     if (totalDividends === 0) return 0;
     
     let accumulatedInvestment = 0;
     for (let i = 0; i <= index; i++) {
       const r = data[i];
-      const valorTotal = r.tipo === 'COMPRA' ? r.valor_total : 
-                        r.tipo === 'VENDA' ? -r.valor_total : 0;
-      accumulatedInvestment += valorTotal;
+      const valorTotal = r.tipo === 'COMPRA' ? (r.valor_total || 0) : 
+                        r.tipo === 'VENDA' ? -(r.valor_total || 0) : 0;
+      accumulatedInvestment = PrecisionCalc.add(accumulatedInvestment, valorTotal);
     }
     
     if (accumulatedInvestment <= 0) return 0;
     
-    return (totalDividends / Math.abs(accumulatedInvestment)) * 100;
+    return PrecisionCalc.percentage(totalDividends, Math.abs(accumulatedInvestment));
   };
 
   const getDYClass = (value: number) => {
@@ -86,13 +87,28 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
   };
 
   const handleDelete = async (index: number) => {
-    const investment = investments[index];
+    const dataConverted = investments.map(convertToInvestmentRow);
+    const investment = dataConverted[index];
+    const currentMoeda = metadata?.moeda || 'BRL';
+    
     if (!investment?.id) {
+      console.error('❌ ID não encontrado no investment:', investment);
       toast.error('ID do investimento não encontrado');
       return;
     }
 
-    if (window.confirm(`Tem certeza que deseja deletar esta operação?\n\nTicker: ${investment.ticker}\nData: ${investment.data}\nTipo: ${investment.tipo}\nQuantidade: ${investment.quantidade}`)) {
+    const confirmMessage = [
+      'Tem certeza que deseja deletar esta operação?',
+      '',
+      `Ticker: ${investment.ticker || activeTab}`,
+      `Data: ${formatDate(investment.data)}`,
+      `Tipo: ${investment.tipo}`,
+      `Quantidade: ${investment.quantidade || 0}`,
+      investment.dividendos > 0 ? `Dividendos: ${formatCurrency(investment.dividendos, currentMoeda)}` : '',
+      investment.juros > 0 ? `Juros: ${formatCurrency(investment.juros, currentMoeda)}` : ''
+    ].filter(Boolean).join('\n');
+
+    if (window.confirm(confirmMessage)) {
       try {
         console.log('🗑️ Tentando deletar investimento:', investment.id);
         await investmentService.delete(investment.id);
@@ -105,78 +121,195 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
     }
   };
 
-  // 💰 CÁLCULOS 100% CORRETOS - CORRIGIDO
+  // Função para converter Investment para InvestmentRow com alta precisão
+  const convertToInvestmentRow = (inv: any): any => {
+    // A estrutura do banco usa campos 'compra', 'venda', 'valor_unit'
+    const row: any = {
+      id: inv.id,
+      ticker: inv.ticker,
+      data: inv.date || inv.data,
+      dividendos: PrecisionCalc.round7(Number(inv.dividendos || 0)),
+      juros: PrecisionCalc.round7(Number(inv.juros || 0)),
+      impostos: PrecisionCalc.round7(Number(inv.impostos || 0)),
+      observacoes: inv.observacoes || ''
+    };
+    
+    // Extrair valores com alta precisão
+    const compra = PrecisionCalc.round7(Number(inv.compra || 0));
+    const venda = PrecisionCalc.round7(Number(inv.venda || 0));
+    const valorUnit = PrecisionCalc.round7(Number(inv.valor_unit || 0));
+    let valorTotal = PrecisionCalc.round7(Number(inv.valor_total || 0));
+    
+    // Determinar o tipo baseado nos valores
+    // Prioridade: COMPRA > VENDA > DIVIDENDO > JUROS > DESDOBRAMENTO
+    if (compra > 0) {
+      row.tipo = 'COMPRA';
+      row.quantidade = compra;
+      row.valor_unitario = valorUnit;
+      // Sempre recalcular valor_total se estiver 0
+      if (valorTotal === 0 && valorUnit > 0) {
+        valorTotal = PrecisionCalc.multiply(compra, valorUnit);
+      }
+      row.valor_total = valorTotal;
+    } else if (venda > 0) {
+      row.tipo = 'VENDA';
+      row.quantidade = venda;
+      row.valor_unitario = valorUnit;
+      // Sempre recalcular valor_total se estiver 0
+      if (valorTotal === 0 && valorUnit > 0) {
+        valorTotal = PrecisionCalc.multiply(venda, valorUnit);
+      }
+      row.valor_total = valorTotal;
+    } else if (row.dividendos > 0) {
+      row.tipo = 'DIVIDENDO';
+      row.quantidade = 0;
+      row.valor_unitario = 0;
+      row.valor_total = 0;
+    } else if (row.juros > 0) {
+      row.tipo = 'JUROS';
+      row.quantidade = 0;
+      row.valor_unitario = 0;
+      row.valor_total = 0;
+    } else {
+      // Default para desdobramento ou operações sem valor
+      row.tipo = 'DESDOBRAMENTO';
+      row.quantidade = 0;
+      row.valor_unitario = 0;
+      row.valor_total = 0;
+    }
+    
+    return row;
+  };
+
+  // 💰 CÁLCULOS 100% CORRETOS - CORRIGIDO - ALTA PRECISÃO (10 CASAS DECIMAIS)
   const calculateTotals = () => {
+    // Log mínimo para debug em produção
+    if (investments && investments.length > 0) {
+      console.log(`[${activeTab}] Calculando totais para ${investments.length} registros`);
+      if (investments[0]) {
+        console.log(`[${activeTab}] Exemplo:`, {
+          compra: investments[0].compra,
+          venda: investments[0].venda,
+          valor_unit: investments[0].valor_unit,
+          dividendos: investments[0].dividendos,
+          juros: investments[0].juros
+        });
+      }
+    }
+    
+    if (!investments || investments.length === 0) {
+      return {
+        totalInvestido: 0,
+        currentPosition: 0,
+        totalDividendos: 0,
+        totalJuros: 0,
+        totalImpostos: 0,
+        totalProventos: 0,
+        precoMedio: 0,
+        dyGeral: 0,
+        moeda: metadata?.moeda || 'BRL'
+      };
+    }
+    
+    // Variáveis de acumulação com precisão de 10 casas decimais
     let totalInvestido = 0;
     let currentPosition = 0;
     let totalDividendos = 0;
     let totalJuros = 0;
     let totalImpostos = 0;
     
-    investments.forEach(investment => {
-      switch (investment.tipo) {
+    // Converter os dados para o formato correto
+    const convertedInvestments = investments.map(convertToInvestmentRow);
+    
+    // Processar cada investment
+    convertedInvestments.forEach((investment) => {
+      const tipo = investment.tipo;
+      const quantidade = Number(investment.quantidade || 0);
+      let valorTotal = Number(investment.valor_total || 0);
+      const dividendos = Number(investment.dividendos || 0);
+      const juros = Number(investment.juros || 0);
+      const impostos = Number(investment.impostos || 0);
+      
+      // FALLBACK: Se valor_total é 0 para COMPRA/VENDA, calcular dinamicamente
+      if ((tipo === 'COMPRA' || tipo === 'VENDA') && valorTotal === 0 && quantidade > 0) {
+        const valorUnitario = Number(investment.valor_unitario || 0);
+        if (valorUnitario > 0) {
+          valorTotal = quantidade * valorUnitario;
+          console.log(`[${activeTab}] Recalculando valor_total: ${quantidade} * ${valorUnitario} = ${valorTotal}`);
+        }
+      }
+      
+      switch (tipo) {
         case 'COMPRA':
-          totalInvestido += investment.valor_total; // Soma o valor gasto
-          currentPosition += investment.quantidade; // Soma as cotas
+          totalInvestido = PrecisionCalc.add(totalInvestido, valorTotal);
+          currentPosition = PrecisionCalc.add(currentPosition, quantidade);
           break;
+          
         case 'VENDA':
-          // ✅ CORREÇÃO: Não diminuir totalInvestido (é valor GASTO, não recebido)
-          currentPosition -= investment.quantidade; // Só remove as cotas vendidas
+          currentPosition = PrecisionCalc.subtract(currentPosition, quantidade);
           break;
+          
         case 'DIVIDENDO':
-          totalDividendos += investment.dividendos;
+          if (dividendos > 0) {
+            totalDividendos = PrecisionCalc.add(totalDividendos, dividendos);
+          }
           break;
+          
         case 'JUROS':
-          totalJuros += investment.juros;
+          if (juros > 0) {
+            totalJuros = PrecisionCalc.add(totalJuros, juros);
+          }
           break;
+          
         case 'DESDOBRAMENTO':
-          currentPosition += investment.quantidade; // Adiciona cotas do desdobramento
+          if (quantidade > 0) {
+            currentPosition = PrecisionCalc.add(currentPosition, quantidade);
+          }
           break;
+      }
+      
+      // Impostos sempre são somados
+      if (impostos > 0) {
+        totalImpostos = PrecisionCalc.add(totalImpostos, impostos);
       }
     });
     
-    const totalProventos = totalDividendos + totalJuros;
-    const precoMedio = currentPosition > 0 ? totalInvestido / currentPosition : 0;
-    const dyGeral = totalInvestido > 0 ? (totalProventos / totalInvestido) * 100 : 0;
+    // Cálculos finais com alta precisão
+    const totalProventos = PrecisionCalc.add(totalDividendos, totalJuros);
+    const precoMedio = PrecisionCalc.divide(totalInvestido, currentPosition);
+    const dyGeral = PrecisionCalc.percentage(totalProventos, totalInvestido);
     
-    return {
-      totalInvestido,
-      currentPosition,
-      totalDividendos,
-      totalJuros,
-      totalImpostos,
-      totalProventos,
-      precoMedio,
-      dyGeral,
+    const result = {
+      totalInvestido: PrecisionCalc.round7(totalInvestido),
+      currentPosition: PrecisionCalc.round7(currentPosition),
+      totalDividendos: PrecisionCalc.round7(totalDividendos),
+      totalJuros: PrecisionCalc.round7(totalJuros),
+      totalImpostos: PrecisionCalc.round7(totalImpostos),
+      totalProventos: PrecisionCalc.round7(totalProventos),
+      precoMedio: PrecisionCalc.round7(precoMedio),
+      dyGeral: PrecisionCalc.round7(dyGeral),
       moeda: metadata?.moeda || 'BRL'
     };
+    
+    // Log do resultado final
+    console.log(`[${activeTab}] Totais calculados:`, {
+      totalInvestido: result.totalInvestido.toFixed(2),
+      currentPosition: result.currentPosition.toFixed(0),
+      totalProventos: result.totalProventos.toFixed(2),
+      dyGeral: result.dyGeral.toFixed(2) + '%'
+    });
+    
+    return result;
   };
 
   const formatCurrency = (value: number, moeda: string) => {
-    if (moeda === 'USD') {
-      return `$${formatNumber(value)}`;
-    } else {
-      return `R$ ${formatNumber(value)}`;
-    }
+    return PrecisionCalc.formatCurrency(value, moeda as 'BRL' | 'USD');
   };
 
-  const data = investments;
+  // Converter todos os dados para o formato correto antes de usar
+  const data = investments.map(convertToInvestmentRow);
   const totals = calculateTotals();
   const moeda = metadata?.moeda || 'BRL';
-
-  // 🔍 DEBUG: Verificar cálculos corretos
-  React.useEffect(() => {
-    if (activeTab === 'BBAS3' && investments.length > 0) {
-      console.log('🧮 === VERIFICAÇÃO CÁLCULOS BBAS3 ===');
-      console.log('📊 Total registros:', investments.length);
-      console.log('💰 Total Investido calculado:', totals.totalInvestido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
-      console.log('📈 Posição Atual:', totals.currentPosition.toLocaleString('pt-BR'), 'cotas');
-      console.log('💎 Total Dividendos:', totals.totalDividendos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
-      console.log('💰 Total Juros:', totals.totalJuros.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
-      console.log('📈 DY Geral:', totals.dyGeral.toFixed(2) + '%');
-      console.log('💵 Preço Médio:', totals.precoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
-    }
-  }, [activeTab, investments, totals]);
 
   const renderHeader = () => {
     return (
@@ -199,7 +332,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
         <div className="flex flex-col text-right">
           <div className="text-sm text-slate-400">Posição Atual</div>
           <div className="text-lg font-semibold text-white">
-            {totals.currentPosition} cotas
+            {Math.round(totals.currentPosition)} cotas
           </div>
         </div>
       </div>
@@ -262,7 +395,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
             {data.map((row, index) => {
               const isEditing = editingIndex === index;
               const dy = calculateHistoricalDY(data, index);
-              const valorTotal = row.valor_total;
+              const valorTotal = row.valor_total || 0;
 
               return (
                 <motion.tr
@@ -382,7 +515,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
                   <td className="px-4 py-2">
                     {dy > 0 && (
                       <span className={`px-2 py-1 rounded ${getDYClass(dy)}`}>
-                        {formatNumber(dy)}%
+                        {formatNumber(dy, 2)}%
                       </span>
                     )}
                   </td>
@@ -441,7 +574,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
             <tr className="bg-slate-800 text-white font-semibold border-t-2 border-slate-700 hover:bg-slate-800">
               <td className="px-4 py-4 font-bold">TOTAIS</td>
               <td className="px-4 py-4 font-bold">-</td>
-              <td className="px-4 py-4 font-bold">{totals.currentPosition}</td>
+              <td className="px-4 py-4 font-bold">{Math.round(totals.currentPosition)}</td>
               <td className="px-4 py-4 text-red-400 font-bold">-</td>
               <td className="px-4 py-4 font-bold">
                 <span className="bg-blue-900/40 px-2 py-1 rounded">P.M: {formatCurrency(totals.precoMedio, moeda)}</span>
@@ -462,11 +595,11 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
               )}
               <td className="px-4 py-4 font-bold">
                 <span className={`px-2 py-1 rounded text-lg ${getDYClass(totals.dyGeral)}`}>
-                  {formatNumber(totals.dyGeral)}%
+                  {formatNumber(totals.dyGeral, 2)}%
                 </span>
               </td>
               <td className="px-4 py-4 font-bold" colSpan={2}>
-                <span className="bg-purple-900/20 px-2 py-1 rounded text-purple-300">SALDO: {totals.currentPosition} cotas</span>
+                <span className="bg-purple-900/20 px-2 py-1 rounded text-purple-300">SALDO: {Math.round(totals.currentPosition)} cotas</span>
               </td>
             </tr>
           </tfoot>
@@ -490,11 +623,11 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
           </div>
           <div className="text-center p-4 bg-slate-900/60 rounded-lg border border-slate-700 hover:border-blue-500/50 transition-colors shadow-lg">
             <div className="text-sm text-slate-400 mb-1">Yield Total</div>
-            <div className="text-xl font-bold text-blue-400">{formatNumber(totals.dyGeral)}%</div>
+            <div className="text-xl font-bold text-blue-400">{formatNumber(totals.dyGeral, 2)}%</div>
           </div>
           <div className="text-center p-4 bg-slate-900/60 rounded-lg border border-slate-700 hover:border-purple-500/50 transition-colors shadow-lg">
             <div className="text-sm text-slate-400 mb-1">Posição Atual</div>
-            <div className="text-xl font-bold text-purple-400">{totals.currentPosition} cotas</div>
+            <div className="text-xl font-bold text-purple-400">{Math.round(totals.currentPosition)} cotas</div>
           </div>
         </div>
       </motion.div>

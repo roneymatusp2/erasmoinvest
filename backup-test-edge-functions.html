@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Edge Functions ErasmoInvest</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #1a1a1a; color: white; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #333; border-radius: 8px; }
+        .success { border-color: #4CAF50; background: rgba(76, 175, 80, 0.1); }
+        .error { border-color: #F44336; background: rgba(244, 67, 54, 0.1); }
+        .loading { border-color: #FF9800; background: rgba(255, 152, 0, 0.1); }
+        pre { background: #2a2a2a; padding: 15px; border-radius: 4px; overflow-x: auto; }
+        button { padding: 10px 20px; margin: 5px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #1976D2; }
+        .log { font-family: monospace; background: #2a2a2a; padding: 10px; margin: 10px 0; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 ErasmoInvest - Teste das Edge Functions</h1>
+        
+        <div class="test-section loading" id="tesouro-test">
+            <h2>🏛️ Teste Tesouro Direto</h2>
+            <button onclick="testTesouroDireto()">Testar Edge Function Tesouro</button>
+            <div id="tesouro-results"></div>
+        </div>
+        
+        <div class="test-section loading" id="usd-test">
+            <h2>💱 Teste USD-BRL</h2>
+            <button onclick="testUSDBRL()">Testar Edge Function USD-BRL</button>
+            <div id="usd-results"></div>
+        </div>
+        
+        <div class="test-section loading" id="market-test">
+            <h2>📊 Teste API de Mercado</h2>
+            <button onclick="testMarketData()">Testar Busca de Dados de Mercado</button>
+            <div id="market-results"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configurar Supabase
+        const supabaseUrl = 'https://gjvtncdjcslnkfctqnfy.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqdnRuY2RqY3NsbmtmY3RxbmZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM5NzM0MDEsImV4cCI6MjA1OTU0OTQwMX0.AzALxUUvYLJJtDkvxt7efJ7bGxeKmzOs-fT5bQOndiU';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+        
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `<div class="log">[${timestamp}] ${message}</div>`;
+            element.innerHTML += logEntry;
+        }
+        
+        function setStatus(sectionId, status) {
+            const section = document.getElementById(sectionId);
+            section.className = `test-section ${status}`;
+        }
+        
+        async function testTesouroDireto() {
+            const resultDiv = 'tesouro-results';
+            document.getElementById(resultDiv).innerHTML = '';
+            setStatus('tesouro-test', 'loading');
+            
+            log(resultDiv, '🏛️ Iniciando teste da Edge Function tesouro-direto-proxy...');
+            
+            try {
+                const { data, error } = await supabase.functions.invoke('tesouro-direto-proxy');
+                
+                if (error) {
+                    throw new Error(`Edge Function erro: ${error.message || error.status}`);
+                }
+                
+                log(resultDiv, '✅ Edge Function executada com sucesso!');
+                log(resultDiv, `📊 Estrutura da resposta: ${Object.keys(data).join(', ')}`);
+                
+                if (data.response?.TrsrBdTradgList) {
+                    const titulos = data.response.TrsrBdTradgList;
+                    log(resultDiv, `📋 ${titulos.length} títulos encontrados`);
+                    
+                    // Procurar por SELIC 2026
+                    const selic2026 = titulos.find(t => 
+                        t.TrsrBd?.nm?.includes('SELIC') && t.TrsrBd?.nm?.includes('2026')
+                    );
+                    
+                    if (selic2026) {
+                        log(resultDiv, '🎯 Encontrado SELIC 2026:');
+                        log(resultDiv, `   Nome: ${selic2026.TrsrBd.nm}`);
+                        log(resultDiv, `   Valor Unitário: R$ ${selic2026.TrsrBd.untrRedVal}`);
+                        log(resultDiv, `   Investimento Mínimo: R$ ${selic2026.TrsrBd.minInvstmtAmt}`);
+                        log(resultDiv, `   Vencimento: ${selic2026.TrsrBd.mtrtyDt || 'N/A'}`);
+                        setStatus('tesouro-test', 'success');
+                    } else {
+                        log(resultDiv, '⚠️ SELIC 2026 não encontrado');
+                        log(resultDiv, '📋 Primeiros 5 títulos disponíveis:');
+                        titulos.slice(0, 5).forEach(t => {
+                            log(resultDiv, `   - ${t.TrsrBd?.nm} (R$ ${t.TrsrBd?.untrRedVal})`);
+                        });
+                        setStatus('tesouro-test', 'error');
+                    }
+                } else {
+                    log(resultDiv, '❌ Estrutura inesperada da resposta');
+                    log(resultDiv, `📋 Dados recebidos: ${JSON.stringify(data, null, 2)}`);
+                    setStatus('tesouro-test', 'error');
+                }
+                
+            } catch (err) {
+                log(resultDiv, `❌ Erro ao testar Edge Function: ${err.message}`);
+                console.error('Erro completo:', err);
+                setStatus('tesouro-test', 'error');
+            }
+        }
+        
+        async function testUSDBRL() {
+            const resultDiv = 'usd-results';
+            document.getElementById(resultDiv).innerHTML = '';
+            setStatus('usd-test', 'loading');
+            
+            log(resultDiv, '💱 Iniciando teste da Edge Function usd-brl-rate...');
+            
+            try {
+                const { data, error } = await supabase.functions.invoke('usd-brl-rate');
+                
+                if (error) {
+                    throw new Error(`Edge Function erro: ${error.message || error.status}`);
+                }
+                
+                log(resultDiv, '✅ Edge Function USD-BRL executada com sucesso!');
+                log(resultDiv, `💲 Taxa de câmbio: ${data.rate}`);
+                log(resultDiv, `📅 Última atualização: ${data.lastUpdated}`);
+                log(resultDiv, `🔄 Taxa inversa: ${data.inverse}`);
+                setStatus('usd-test', 'success');
+                
+            } catch (err) {
+                log(resultDiv, `❌ Erro ao testar Edge Function USD-BRL: ${err.message}`);
+                console.error('Erro completo:', err);
+                setStatus('usd-test', 'error');
+            }
+        }
+        
+        async function testMarketData() {
+            const resultDiv = 'market-results';
+            document.getElementById(resultDiv).innerHTML = '';
+            setStatus('market-test', 'loading');
+            
+            log(resultDiv, '📊 Testando busca de dados de mercado...');
+            
+            try {
+                // Testar busca de dados para TESOURO SELIC 2026
+                log(resultDiv, '🏛️ Testando busca para TESOURO SELIC 2026...');
+                
+                // Simular a mesma lógica do marketApi.ts
+                const ticker = 'TESOURO SELIC 2026';
+                
+                if (ticker.toUpperCase().includes('TESOURO')) {
+                    log(resultDiv, '✅ Identificado como Tesouro Direto, chamando Edge Function...');
+                    await testTesouroDireto();
+                } else {
+                    log(resultDiv, '⚠️ Não identificado como Tesouro Direto');
+                }
+                
+                setStatus('market-test', 'success');
+                
+            } catch (err) {
+                log(resultDiv, `❌ Erro ao testar dados de mercado: ${err.message}`);
+                console.error('Erro completo:', err);
+                setStatus('market-test', 'error');
+            }
+        }
+        
+        // Auto-executar todos os testes ao carregar a página
+        window.onload = () => {
+            log('tesouro-results', '🚀 Página carregada. Clique nos botões para executar os testes.');
+            log('usd-results', '🚀 Página carregada. Clique nos botões para executar os testes.');
+            log('market-results', '🚀 Página carregada. Clique nos botões para executar os testes.');
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug - Teste de Cores dos Cards</title>
+    <style>
+        body {
+            background-color: #1e293b;
+            color: white;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid;
+            border-radius: 16px;
+            padding: 20px;
+            margin: 10px;
+            display: inline-block;
+            width: 300px;
+            vertical-align: top;
+        }
+        .ticker {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .type-info {
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .colors {
+            margin-top: 10px;
+        }
+        .color-sample {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            margin: 2px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 Debug - Sistema de Cores dos Cards</h1>
+    <p>Este é um teste manual para verificar as cores que deveriam aparecer nos cards do modo grade.</p>
+    
+    <div id="cards-container"></div>
+
+    <script>
+        // Simular função getAssetTypeColors do AssetCard.tsx
+        function getAssetTypeColors(assetType, country) {
+            console.log(`Testing colors for: ${assetType} from ${country}`);
+            
+            if (assetType === 'FII') {
+                return {
+                    bg: 'rgba(34, 197, 94, 0.1)',
+                    border: '#166534',
+                    ticker: '#4ade80',
+                    accent: '#22c55e',
+                    gradient: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.1))',
+                    emoji: '🏢',
+                    name: 'FII (Verde)'
+                };
+            } else if (assetType === 'ACAO' && country === 'BRASIL') {
+                return {
+                    bg: 'rgba(147, 51, 234, 0.1)',
+                    border: '#6b21a8',
+                    ticker: '#a855f7',
+                    accent: '#9333ea',
+                    gradient: 'linear-gradient(135deg, rgba(147, 51, 234, 0.2), rgba(147, 51, 234, 0.1))',
+                    emoji: '🇧🇷',
+                    name: 'Ação Brasil (Roxo)'
+                };
+            } else if (country === 'EUA' || assetType === 'ETF' || assetType === 'STOCK' || assetType === 'REIT') {
+                return {
+                    bg: 'rgba(234, 88, 12, 0.1)',
+                    border: '#9a3412',
+                    ticker: '#fb923c',
+                    accent: '#ea580c',
+                    gradient: 'linear-gradient(135deg, rgba(234, 88, 12, 0.2), rgba(234, 88, 12, 0.1))',
+                    emoji: '🇺🇸',
+                    name: 'Internacional/EUA (Laranja)'
+                };
+            } else if (assetType === 'TESOURO_DIRETO') {
+                return {
+                    bg: 'rgba(16, 185, 129, 0.1)',
+                    border: '#047857',
+                    ticker: '#34d399',
+                    accent: '#10b981',
+                    gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1))',
+                    emoji: '🏛️',
+                    name: 'Tesouro Direto (Verde Água)'
+                };
+            } else {
+                return {
+                    bg: 'rgba(59, 130, 246, 0.1)',
+                    border: '#1e40af',
+                    ticker: '#60a5fa',
+                    accent: '#3b82f6',
+                    gradient: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1))',
+                    emoji: '📊',
+                    name: 'Fallback (Azul)'
+                };
+            }
+        }
+
+        // Dados de teste simulando diferentes tipos de ativos
+        const testAssets = [
+            { ticker: 'ALZR11', type: 'FII', country: 'BRASIL', nome: 'Alianza Trust Renda Imobiliária' },
+            { ticker: 'BBAS3', type: 'ACAO', country: 'BRASIL', nome: 'Banco do Brasil' },
+            { ticker: 'VOO', type: 'ETF', country: 'EUA', nome: 'Vanguard S&P 500 ETF' },
+            { ticker: 'DVN', type: 'STOCK', country: 'EUA', nome: 'Devon Energy Corporation' },
+            { ticker: 'O', type: 'REIT', country: 'EUA', nome: 'Realty Income Corporation' },
+            { ticker: 'TESOURO SELIC 2026', type: 'TESOURO_DIRETO', country: 'BRASIL', nome: 'Tesouro Selic 2026' },
+            { ticker: 'UNKNOWN', type: 'UNKNOWN', country: 'UNKNOWN', nome: 'Ativo Desconhecido (Fallback)' }
+        ];
+
+        // Renderizar cards de teste
+        const container = document.getElementById('cards-container');
+        
+        testAssets.forEach(asset => {
+            const colors = getAssetTypeColors(asset.type, asset.country);
+            
+            const cardDiv = document.createElement('div');
+            cardDiv.className = 'card';
+            cardDiv.style.background = colors.gradient;
+            cardDiv.style.borderColor = colors.border;
+            
+            cardDiv.innerHTML = `
+                <div class="ticker" style="color: ${colors.ticker}">
+                    ${asset.ticker} ${colors.emoji}
+                </div>
+                <div class="type-info">
+                    <strong>${colors.name}</strong><br>
+                    Tipo: ${asset.type}<br>
+                    País: ${asset.country}<br>
+                    Nome: ${asset.nome}
+                </div>
+                <div class="colors">
+                    <strong>Cores:</strong><br>
+                    Ticker: <span class="color-sample" style="background-color: ${colors.ticker}"></span> ${colors.ticker}<br>
+                    Border: <span class="color-sample" style="background-color: ${colors.border}"></span> ${colors.border}<br>
+                    Accent: <span class="color-sample" style="background-color: ${colors.accent}"></span> ${colors.accent}
+                </div>
+            `;
+            
+            container.appendChild(cardDiv);
+        });
+
+        console.log('🎨 Debug de cores carregado! Verifique se as cores estão sendo aplicadas corretamente.');
+    </script>
+</body>
+</html>

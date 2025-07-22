@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mic, MicOff, Volume2, Brain, Sparkles, HelpCircle, Type } from 'lucide-react';
+import { Mic, MicOff, Volume2, Brain, Sparkles, HelpCircle, Type, Play, Pause, Square } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { voiceService } from '../services/voiceCommandService';
 import { VoiceCommandResult, VoiceCommandCallbacks } from '../services/types';
@@ -16,10 +16,12 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
   const [transcription, setTranscription] = useState('');
   const [commandResult, setCommandResult] = useState<string>('');
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [isAudioPaused, setIsAudioPaused] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasAudioReady, setHasAudioReady] = useState(false);
 
   useEffect(() => {
     // Verificar se o navegador suporta as APIs necessárias
@@ -69,9 +71,21 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
     },
     onAudioStart: () => {
       setIsPlayingAudio(true);
+      setIsAudioPaused(false);
+      setHasAudioReady(true);
     },
     onAudioEnd: () => {
       setIsPlayingAudio(false);
+      setIsAudioPaused(false);
+      setHasAudioReady(false);
+    },
+    onAudioPause: () => {
+      setIsAudioPaused(true);
+      setIsPlayingAudio(false);
+    },
+    onAudioResume: () => {
+      setIsAudioPaused(false);
+      setIsPlayingAudio(true);
     },
     onError: (errorMessage) => {
       setError(errorMessage);
@@ -120,6 +134,27 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
     setTimeout(() => {
       setCommandResult('');
     }, 8000);
+  };
+
+  // Controles de áudio
+  const handlePlayAudio = () => {
+    if (voiceService.isAudioPlaying) return;
+    if (isAudioPaused) {
+      voiceService.resumeAudio();
+    } else {
+      voiceService.playAudio();
+    }
+  };
+
+  const handlePauseAudio = () => {
+    if (voiceService.isAudioPlaying) {
+      voiceService.pauseAudio();
+    }
+  };
+
+  const handleStopAudio = () => {
+    voiceService.stopAudio();
+    setHasAudioReady(false);
   };
 
   // Limpar resultado da transcrição e resposta quando necessário
@@ -337,6 +372,57 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
           <span className="text-sm">Ajuda</span>
         </motion.button>
 
+        {/* Controles de Áudio */}
+        <AnimatePresence>
+          {hasAudioReady && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, x: -20 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.8, x: -20 }}
+              className="flex items-center gap-2 bg-slate-800/80 backdrop-blur-sm rounded-xl p-2 border border-slate-600/50"
+            >
+              {/* Play/Pause Button */}
+              <motion.button
+                onClick={isPlayingAudio ? handlePauseAudio : handlePlayAudio}
+                className={`
+                  flex items-center justify-center w-10 h-10 rounded-lg font-medium text-white
+                  transition-all duration-300 hover:scale-105 transform
+                  ${isPlayingAudio 
+                    ? 'bg-gradient-to-r from-orange-500 to-red-500 shadow-lg shadow-orange-500/25' 
+                    : 'bg-gradient-to-r from-green-500 to-emerald-500 shadow-lg shadow-green-500/25'
+                  }
+                `}
+                whileTap={{ scale: 0.95 }}
+                title={isPlayingAudio ? 'Pausar áudio' : isAudioPaused ? 'Retomar áudio' : 'Reproduzir áudio'}
+              >
+                {isPlayingAudio ? (
+                  <Pause className="w-5 h-5" />
+                ) : (
+                  <Play className="w-5 h-5 ml-0.5" />
+                )}
+              </motion.button>
+
+              {/* Stop Button */}
+              <motion.button
+                onClick={handleStopAudio}
+                className="flex items-center justify-center w-10 h-10 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white rounded-lg font-medium transition-all duration-300 hover:scale-105 transform shadow-lg shadow-red-500/25"
+                whileTap={{ scale: 0.95 }}
+                title="Parar áudio"
+              >
+                <Square className="w-4 h-4" />
+              </motion.button>
+
+              {/* Status Indicator */}
+              <div className="flex items-center gap-2 px-2">
+                <div className={`w-2 h-2 rounded-full ${isPlayingAudio ? 'bg-green-400 animate-pulse' : isAudioPaused ? 'bg-yellow-400' : 'bg-gray-400'}`} />
+                <span className="text-xs text-slate-300">
+                  {isPlayingAudio ? 'Reproduzindo' : isAudioPaused ? 'Pausado' : 'Pronto'}
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Indicador de transcrição e resposta */}
         <AnimatePresence>
           {(transcription || commandResult || error) && (
@@ -378,11 +464,20 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
                   <div className="text-xs text-slate-400 mb-1 flex items-center gap-2">
                     <Brain className="w-3 h-3" />
                     {isPlayingAudio && <Volume2 className="w-3 h-3 animate-pulse text-green-400" />}
+                    {hasAudioReady && !isPlayingAudio && <Volume2 className="w-3 h-3 text-blue-400" />}
                     Erasmo Invest:
                   </div>
                   <div className="text-sm text-green-300 bg-green-900/20 border border-green-500/30 rounded-lg p-2">
                     {commandResult}
                   </div>
+                  
+                  {/* Dica sobre controles de áudio */}
+                  {hasAudioReady && !isPlayingAudio && (
+                    <div className="text-xs text-blue-400 mt-2 flex items-center gap-2 bg-blue-900/20 border border-blue-500/30 rounded-lg p-2">
+                      <Play className="w-3 h-3" />
+                      <span>Use os controles de áudio acima para ouvir a resposta no seu ritmo</span>
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>
