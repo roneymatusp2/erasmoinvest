@@ -98,9 +98,10 @@ export interface Portfolio {
   currentPrice?: number;
   priceChangePercent?: number;
   moeda?: 'BRL' | 'USD';
+  investments?: InvestmentRow[];
+  transactions?: any[];
   lastDividend?: number;
   monthlyIncome?: number;
-  investments?: InvestmentRow[];
   performance?: {
     dy_12m: number;
     dy_historico: number;

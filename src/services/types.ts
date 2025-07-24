@@ -30,6 +30,9 @@ export interface VoiceCommandResult {
   confirmation?: string;
   message?: string;
   response?: string;
+  answer?: string;
+  direct?: boolean;
+  success?: boolean;
 }
 
 export interface SpeechSynthesisResult {

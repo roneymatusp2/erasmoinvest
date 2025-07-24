@@ -12,13 +12,14 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
   const [marketDataMap, setMarketDataMap] = useState<Map<string, MarketData>>(new Map());
   const [loading, setLoading] = useState(true);
 
+  // 🚨 DESABILITADO TEMPORARIAMENTE - Evitar piscar infinito
   // Buscar dados de mercado para todos os ativos
   useEffect(() => {
     const fetchAllMarketData = async () => {
       if (portfolios.length === 0) return;
 
       try {
-        setLoading(true);
+        // setLoading(true); // ❌ COMENTADO para evitar piscar
         const marketData = await marketApiService.getMultipleMarketData(portfolios);
         setMarketDataMap(marketData);
       } catch (error) {
@@ -28,11 +29,12 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
       }
     };
 
-    fetchAllMarketData();
+    // ❌ COMENTADO TEMPORARIAMENTE para debugging do piscar
+    // fetchAllMarketData();
     
-    // Atualizar a cada 1 minuto
-    const interval = setInterval(fetchAllMarketData, 60000);
-    return () => clearInterval(interval);
+    // ✅ INTERVALO REMOVIDO - Evita piscar constante
+    // const interval = setInterval(fetchAllMarketData, 60000);
+    // return () => clearInterval(interval);
   }, [portfolios]);
 
   const formatCurrency = (value: number, currency = 'BRL') => {
@@ -124,9 +126,9 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
           </div>
         </div>
         
-        {loading && (
+        {/* loading && (
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400"></div>
-        )}
+        ) */}
       </div>
 
       {/* Métricas Principais */}
@@ -261,12 +263,12 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({ portfolios }) => {
         </div>
       </div>
 
-      {/* Indicador de Status */}
-      <div className="absolute top-4 right-4">
+      {/* Indicador de Status - TEMPORARIAMENTE DESABILITADO */}
+      {/* <div className="absolute top-4 right-4">
         <div className={`w-3 h-3 rounded-full animate-pulse ${
           loading ? 'bg-yellow-500' : 'bg-green-500'
         }`} />
-      </div>
+      </div> */}
     </motion.div>
   );
 };

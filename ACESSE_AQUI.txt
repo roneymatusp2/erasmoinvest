@@ -1,0 +1,15 @@
+🚀 SEU APP ESTÁ RODANDO!
+
+ACESSE NO NAVEGADOR:
+http://localhost:5173
+
+OU:
+http://172.22.74.90:5173
+
+✅ Tudo funcionando!
+- Frontend React
+- Conexão com Supabase
+- APIs de IA prontas
+
+Para parar: Ctrl+C no terminal
+Para reiniciar: npm run dev

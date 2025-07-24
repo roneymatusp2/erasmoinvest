@@ -246,6 +246,7 @@ class VoiceCommandService {
       this.state.transcription = text;
       
       console.log('📝 Processando comando de texto:', text);
+      console.trace('Stack trace da chamada processTextCommand');
       this.callbacks.onTranscriptionUpdate?.(text);
 
       // Processar comando
@@ -264,11 +265,22 @@ class VoiceCommandService {
       this.state.isProcessing = false;
 
       console.log('✅ Comando processado:', executeResult.result);
+      
+      // Log especial para debug de VALE3
+      if (executeResult.result?.answer?.includes('VALE3')) {
+        console.log('🔍 DEBUG VALE3:', {
+          answer: executeResult.result.answer,
+          data: executeResult.result.data,
+          userId: '4362da88-d01c-4ffe-a447-75751ea8e182'
+        });
+      }
+      
       this.callbacks.onCommandResult?.(executeResult.result);
 
       // Gerar áudio para comando de texto também (sem autoplay)
-      if (executeResult.result.message) {
-        await this.generateSpeech(executeResult.result.message, {
+      const speechText = executeResult.result.answer || executeResult.result.message;
+      if (speechText) {
+        await this.generateSpeech(speechText, {
           autoPlay: false, // Deixar o usuário controlar manualmente
           rate: 0.9
         });
@@ -322,8 +334,9 @@ class VoiceCommandService {
       this.callbacks.onCommandResult?.(executeResult.result);
 
       // 4. Gerar resposta em áudio com controle manual
-      if (executeResult.result.message) {
-        await this.generateSpeech(executeResult.result.message, {
+      const speechText = executeResult.result.answer || executeResult.result.message;
+      if (speechText) {
+        await this.generateSpeech(speechText, {
           autoPlay: false, // Não reproduzir automaticamente
           rate: 0.9 // Velocidade um pouco mais lenta para melhor compreensão
         });
@@ -374,8 +387,13 @@ class VoiceCommandService {
       console.log('🧠 Analisando comando:', transcription);
       
       // Tentar usar a Edge Function primeiro
+      const userId = '4362da88-d01c-4ffe-a447-75751ea8e182';
+      
       const { data, error } = await supabase.functions.invoke('process-command', {
-        body: { text: transcription },
+        body: { 
+          text: transcription,
+          userId: userId 
+        },
         headers: {
           apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
         }
@@ -475,19 +493,33 @@ class VoiceCommandService {
 
   async executeCommand(result: VoiceCommandResult, isVoice: boolean): Promise<CommandProcessResult> {
     try {
+      // Usar o userId fixo do banco de dados
+      const userId = '4362da88-d01c-4ffe-a447-75751ea8e182';
+
+      console.log('🔍 Enviando para execute-command:', {
+        action: result.action,
+        data: result.data,
+        userId: userId
+      });
+
       const { data, error } = await supabase.functions.invoke('execute-command', {
         body: { 
           action: result.action,
           data: result.data,
           isVoice,
-          userId: "f10ce9f4-4d14-4b6f-b4ac-c810a9813d4f"
+          userId: userId
         },
         headers: {
           apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro da Edge Function execute-command:', error);
+        throw error;
+      }
+      
+      console.log('✅ Resposta da Edge Function execute-command:', data);
       return { success: true, result: data };
     } catch (error) {
       console.error('Erro na execução de comando:', error);

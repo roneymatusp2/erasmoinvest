@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -20,6 +20,7 @@ import Login from './components/Login';
 import { portfolioData } from './data/portfolioData';
 import { assetMetadata } from './data/assetMetadata';
 import { getAssetType } from './utils/assetType';
+import { smartLog } from './utils/smartLog';
 
 // Serviços do Supabase
 import { portfolioService, AssetMetadata as SupabaseAssetMetadata } from './services/supabaseService';
@@ -41,21 +42,29 @@ import { Portfolio } from './types/investment';
 import { Investment } from './types/investment';
 
 import { supabase } from './lib/supabase';
+import { useRenderDetector } from './utils/preventFlashing';
+import { useAuthState } from './hooks/useAuthState';
 
 function App() {
-  // Debug das variáveis de ambiente
-  console.log('🔧 ERASMO INVEST - Configurações:');
-  console.log('🌐 SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL || 'NÃO DEFINIDA');
-  console.log('🔑 SUPABASE_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY ? 'DEFINIDA' : 'NÃO DEFINIDA');
+  // Detector de render loops
+  useRenderDetector('App');
+  
+  // Debug das variáveis de ambiente (comentado para evitar spam no console)
+  // console.log('🔧 ERASMO INVEST - Configurações:');
+  // console.log('🌐 SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL || 'NÃO DEFINIDA');
+  // console.log('🔑 SUPABASE_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY ? 'DEFINIDA' : 'NÃO DEFINIDA');
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  // Use the auth hook instead of manual state management
+  const { isAuthenticated, isLoading: authLoading } = useAuthState();
+  
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [refreshKey, setRefreshKey] = useState<number>(0); 
   const [showHorizontal, setShowHorizontal] = useState<boolean>(true);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [useLocalData, setUseLocalData] = useState<boolean>(false); // USAR DADOS DO SUPABASE
+  
   
   // Estados dos modais
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
@@ -64,78 +73,48 @@ function App() {
   const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
   const [initialTicker, setInitialTicker] = useState<string>('');
 
-  useEffect(() => {
-    // Verificação inicial e mais robusta da sessão
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAuthenticated(!!session?.user);
-      console.log('🔒 Auth Estado Inicial (Verificação Manual):', session ? 'Sessão Ativa' : 'Sem Sessão');
-      setLoading(false); // Parar o loading após a verificação inicial
-    });
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      const user = session?.user;
-      setIsAuthenticated(!!user);
-      console.log('🔒 Auth Estado (Listener):', user ? 'AUTENTICADO' : 'NÃO AUTENTICADO');
-      // Se o usuário deslogar, não precisamos recarregar dados, apenas limpar a tela
-      if (!user) {
-        setLoading(false);
-      }
-    });
-
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
+  // Memoizar portfolios para evitar re-renders desnecessários
+  const stablePortfolios = useMemo(() => portfolios, [portfolios.map(p => p.ticker).join(',')]);
   
-  // Carregar dados (Supabase ou locais)
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadData();
-    } else {
-      // Limpar dados se o usuário não estiver autenticado
-      setPortfolios([]);
-      setActiveTab('');
-    }
-  }, [isAuthenticated, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const loadData = async () => {
+  // Definir loadData ANTES de usar no useEffect
+  const loadData = useCallback(async () => {
     try {
-      console.log('🚀 ERASMO INVEST - Iniciando carregamento de dados...');
-      console.log('📊 Portfolio Service:', portfolioService ? 'DISPONÍVEL' : 'INDISPONÍVEL');
-      console.log('🔧 Use Local Data:', useLocalData);
+      smartLog('🚀 ERASMO INVEST - Iniciando carregamento de dados...');
+      smartLog('📊 Portfolio Service:', portfolioService ? 'DISPONÍVEL' : 'INDISPONÍVEL');
+      smartLog('🔧 Use Local Data:', useLocalData);
       
       setLoading(true);
       
       // Tentar carregar do Supabase primeiro
       if (portfolioService && !useLocalData) {
         try {
-          console.log('🔄 === FORÇANDO NOVA CARGA SUPABASE ===');
-          
-          // Limpar cache anterior
-          localStorage.removeItem('portfolioCache');
-          localStorage.removeItem('marketCache');
+          smartLog('🔄 === FORÇANDO NOVA CARGA SUPABASE ===');
           
           const portfolioData = await portfolioService.getPortfolioSummary();
-          console.log('✅ Dados carregados do Supabase:', portfolioData?.length || 0, 'ativos');
+          smartLog('✅ Dados carregados do Supabase:', portfolioData?.length || 0, 'ativos');
           
           if (portfolioData && portfolioData.length > 0) {
-            console.log('📋 Lista de tickers carregados:', portfolioData.map(p => p.ticker).join(', '));
-            console.log('💰 Total de investimentos únicos:', portfolioData.length);
+            smartLog('📋 Lista de tickers carregados:', portfolioData.map(p => p.ticker).join(', '));
+            smartLog('💰 Total de investimentos únicos:', portfolioData.length);
             
             // Mostrar alguns exemplos de ativos
             const top5 = portfolioData.slice(0, 5).map(p => `${p.ticker}(${p.currentPosition})`);
-            console.log('📊 Primeiros 5 ativos:', top5.join(', '));
+            smartLog('📊 Primeiros 5 ativos:', top5.join(', '));
           }
           
           setPortfolios(portfolioData);
           
-          if (!activeTab && portfolioData.length > 0) {
-            setActiveTab('overview'); // 🚀 Começar na aba Overview
-            console.log('📈 Aba ativa definida: overview');
-          }
+          // Usar callback para evitar dependência de activeTab
+          setActiveTab(prevTab => {
+            if (!prevTab && portfolioData.length > 0) {
+              smartLog('📈 Aba ativa definida: overview');
+              return 'overview';
+            }
+            return prevTab;
+          });
           
           setLoading(false);
-          console.log('🎉 Carregamento concluído com sucesso!');
+          smartLog('🎉 Carregamento concluído com sucesso!');
           return;
         } catch (error) {
           console.error('❌ ERRO NO SUPABASE:', error);
@@ -143,7 +122,7 @@ function App() {
           setLoading(false);
         }
       } else {
-        console.log('⚠️ Modo dados locais ativado ou portfolioService indisponível');
+        smartLog('⚠️ Modo dados locais ativado ou portfolioService indisponível');
         setLoading(false);
       }
     } catch (error) {
@@ -151,7 +130,48 @@ function App() {
       toast.error('Erro geral ao carregar dados');
       setLoading(false);
     }
-  };
+  }, [useLocalData]); // Removido portfolioService das dependências
+
+  // Carregar dados quando autenticado
+  useEffect(() => {
+    let mounted = true;
+    
+    const loadDataSafe = async () => {
+      // Só carregar se autenticado e não está carregando auth
+      if (!mounted || !isAuthenticated || authLoading) {
+        return;
+      }
+      
+      try {
+        setLoading(true);
+        await loadData();
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+        if (mounted) {
+          toast.error('Erro ao carregar dados');
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadDataSafe();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [isAuthenticated, authLoading, loadData]); // Dependências corretas
+
+  // Função separada para refresh manual
+  const handleRefresh = useCallback(async () => {
+    if (isAuthenticated) {
+      setRefreshKey(prev => prev + 1);
+      await loadData();
+      toast.success('Dados atualizados!');
+    }
+  }, [isAuthenticated, loadData]);
 
   const sortedInvestments = useMemo(() => {
     return portfolios.map(p => p.ticker).sort((a, b) => a.localeCompare(b));
@@ -163,31 +183,41 @@ function App() {
     );
   }, [searchTerm, sortedInvestments]);
 
-  const handleTabChange = (tab: string) => {
+  const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab);
-  };
+  }, []);
 
-  const handleDataChange = () => {
-    setRefreshKey(prev => prev + 1);
-    toast.success('Dados atualizados!');
-  };
+  const handleDataChange = handleRefresh;
   
-  const handleEditInvestment = (investment: unknown) => {
+  const handleEditInvestment = useCallback((investment: unknown) => {
     setEditingInvestment(investment as Investment);
     setShowEditModal(true);
-  };
+  }, []);
   
-  const handleModalSuccess = () => {
+  const handleModalSuccess = useCallback(() => {
     handleDataChange();
     setShowAddModal(false);
     setShowEditModal(false);
     setEditingInvestment(null);
-  };
+  }, [handleDataChange]);
 
-  const handleOpenAddInvestmentFromAsset = (ticker: string) => {
+  const handleOpenAddInvestmentFromAsset = useCallback((ticker: string) => {
     setInitialTicker(ticker);
     setShowAddModal(true);
-  };
+  }, []);
+
+  const handleLogin = useCallback(() => {
+    // A autenticação agora é gerenciada pelo onAuthStateChange
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast.error('Erro ao sair do sistema');
+    } else {
+      toast.success('Você saiu do sistema com sucesso');
+    }
+  }, []);
 
   const exportToExcel = () => {
     const workbook = XLSX.utils.book_new();
@@ -507,21 +537,8 @@ function App() {
     toast.success(`📊 Relatório detalhado de ${activeTab} exportado!`);
   };
 
-  const handleLogin = () => {
-    // A autenticação agora é gerenciada pelo onAuthStateChange
-  };
-
-  const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast.error('Erro ao sair do sistema');
-    } else {
-      toast.success('Você saiu do sistema com sucesso');
-    }
-  };
-
   // 🎨 Função para obter classes de cor dos botões da grade de ativos
-  const getTabColor = (ticker: string): string => {
+  const getTabColor = useCallback((ticker: string): string => {
     // Se a aba está ativa, manter destaque azul padrão
     if (activeTab === ticker) {
       return 'bg-blue-600 text-white shadow-lg';
@@ -547,20 +564,20 @@ function App() {
       default:
         return 'bg-slate-700/50 text-slate-300 hover:bg-slate-600';
     }
-  };
+  }, [activeTab]);
 
   // PRIMEIRA VERIFICAÇÃO: Se não está autenticado, mostrar login
   if (!isAuthenticated) {
     return <Login />;
   }
 
-  // SEGUNDA VERIFICAÇÃO: Se autenticado mas carregando dados, mostrar loading
-  if (loading) {
+  // SEGUNDA VERIFICAÇÃO: Se carregando auth ou dados, mostrar loading
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 text-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Carregando dados do Supabase...</p>
+          <p>{authLoading ? 'Verificando autenticação...' : 'Carregando dados do Supabase...'}</p>
           <p className="text-sm text-slate-400 mt-2">Conectando com APIs de mercado</p>
         </div>
       </div>
@@ -697,48 +714,33 @@ function App() {
         </div>
 
         {/* 🚀 CONTEÚDO PRINCIPAL - RENDERIZAÇÃO BASEADA EM ABAS */}
-        <AnimatePresence mode="wait">
-          {/* 📊 VERIFICAR SE É UMA ABA PRINCIPAL */}
-          {['overview', 'dashboard', 'portfolio', 'settings'].includes(activeTab) ? (
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.5 }}
-            >
-              {activeTab === 'overview' && <OverviewTab portfolios={portfolios} />}
-              {activeTab === 'dashboard' && <DashboardTab portfolios={portfolios} />}
-              {activeTab === 'portfolio' && (
-                <PortfolioTab 
-                  portfolios={portfolios}
-                  onAddInvestment={() => setShowAddModal(true)}
-                  onNewAsset={() => setShowNewAssetModal(true)}
-                />
-              )}
-              {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} />}
-            </motion.div>
-          ) : (
-            <motion.div
-              key="table"
-              layoutId="mainContent"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.5 }}
-            >
-              <InvestmentTable
-                portfolio={portfolios.find(p => p.ticker === activeTab)}
-                investments={portfolios.find(p => p.ticker === activeTab)?.investments || []}
-                metadata={portfolios.find(p => p.ticker === activeTab)?.metadata || null}
-                activeTab={activeTab} 
-                onDataChange={handleDataChange}
-                onEditInvestment={handleEditInvestment}
-                readOnly={false}
+        {/* REMOVIDO AnimatePresence temporariamente para evitar piscar */}
+        {['overview', 'dashboard', 'portfolio', 'settings'].includes(activeTab) ? (
+          <div>
+            {activeTab === 'overview' && <OverviewTab portfolios={stablePortfolios} />}
+            {activeTab === 'dashboard' && <DashboardTab portfolios={stablePortfolios} />}
+            {activeTab === 'portfolio' && (
+              <PortfolioTab 
+                portfolios={stablePortfolios}
+                onAddInvestment={() => setShowAddModal(true)}
+                onNewAsset={() => setShowNewAssetModal(true)}
               />
-            </motion.div>
-          )}
-        </AnimatePresence>
+            )}
+            {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} />}
+          </div>
+        ) : (
+          <div>
+            <InvestmentTable
+              portfolio={portfolios.find(p => p.ticker === activeTab)}
+              investments={portfolios.find(p => p.ticker === activeTab)?.investments || []}
+              metadata={portfolios.find(p => p.ticker === activeTab)?.metadata || null}
+              activeTab={activeTab} 
+              onDataChange={handleDataChange}
+              onEditInvestment={handleEditInvestment}
+              readOnly={false}
+            />
+          </div>
+        )}
       </main>
       
       {/* Modais */}
@@ -748,7 +750,7 @@ function App() {
           setShowAddModal(false);
           setInitialTicker('');
         }}
-        portfolios={portfolios}
+        portfolios={stablePortfolios}
         onSuccess={handleModalSuccess}
         initialTicker={initialTicker}
       />

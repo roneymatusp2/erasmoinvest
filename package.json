@@ -10,7 +10,15 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "build:check": "npm run type-check && npm run lint && npm run build"
+    "build:check": "npm run type-check && npm run lint && npm run build",
+    "supabase:start": "npx supabase start",
+    "supabase:stop": "npx supabase stop",
+    "supabase:push": "npx supabase db push --project-id gjvtncdjcslnkfctqnfy",
+    "supabase:functions:serve": "npx supabase functions serve --env-file .env.local",
+    "deploy:functions": "npx supabase functions deploy execute-command --project-id gjvtncdjcslnkfctqnfy && npx supabase functions deploy cognitive-core --project-id gjvtncdjcslnkfctqnfy && npx supabase functions deploy ingest-market-data-cron --project-id gjvtncdjcslnkfctqnfy && npx supabase functions deploy sentinel-agent-cron --project-id gjvtncdjcslnkfctqnfy && npx supabase functions deploy test-cognitive --project-id gjvtncdjcslnkfctqnfy",
+    "deploy:db": "npx supabase db push --project-id gjvtncdjcslnkfctqnfy",
+    "deploy": "npm run deploy:db && npm run deploy:functions",
+    "deploy:all": "npm run build && npm run deploy"
   },
   "dependencies": {
     "@mistralai/mistralai": "^0.5.0",

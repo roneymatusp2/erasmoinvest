@@ -7,7 +7,11 @@ interface OverviewTabProps {
   portfolios: Portfolio[];
 }
 
-const OverviewTab: React.FC<OverviewTabProps> = ({ portfolios }) => {
+// Cache da data para evitar re-renders constantes - FIXO para evitar piscar
+const FIXED_DATETIME = new Date().toLocaleString('pt-BR');
+
+const OverviewTab: React.FC<OverviewTabProps> = React.memo(({ portfolios }) => {
+  const currentDateTime = FIXED_DATETIME; // Data fixa para evitar re-renders
 
   const summary = useMemo(() => {
     if (!portfolios || portfolios.length === 0) {
@@ -35,27 +39,35 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ portfolios }) => {
     });
   }, [portfolios]);
   
-  const totalProfitPercent = summary.totalInvested > 0 ? (summary.totalProfit / summary.totalInvested) * 100 : 0;
-  const totalYield = summary.totalInvested > 0 ? (summary.totalDividends / summary.totalInvested) * 100 : 0;
-
-  const formatCurrency = (value: number) => 
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+  const totalProfitPercent = useMemo(() => 
+    summary.totalInvested > 0 ? (summary.totalProfit / summary.totalInvested) * 100 : 0,
+    [summary.totalInvested, summary.totalProfit]
+  );
   
-  const formatPercent = (value: number) => 
-    `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+  const totalYield = useMemo(() => 
+    summary.totalInvested > 0 ? (summary.totalDividends / summary.totalInvested) * 100 : 0,
+    [summary.totalInvested, summary.totalDividends]
+  );
+
+  const formatCurrency = useMemo(() => (value: number) => 
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value), []);
+  
+  const formatPercent = useMemo(() => (value: number) => 
+    `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`, []);
 
   return (
     <div className="space-y-8">
       <motion.div 
         initial={{ opacity: 0, y: 20 }} 
-        animate={{ opacity: 1, y: 0 }} 
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
         className="bg-gradient-to-br from-blue-900/30 to-indigo-900/30 rounded-3xl p-8 border border-white/10"
       >
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-4xl font-bold text-white">Visão Geral do Portfólio</h1>
             <p className="text-slate-400 mt-2">
-              Atualizado: {new Date().toLocaleString('pt-BR')}
+              Atualizado: {currentDateTime}
             </p>
           </div>
           <div className="text-right">
@@ -95,7 +107,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ portfolios }) => {
       </motion.div>
     </div>
   );
-};
+});
 
 interface MetricCardProps {
   title: string;

@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker:*)",
+      "Bash(supabase:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(npm install:*)",
+      "Bash(npx supabase:*)",
+      "Bash(rm:*)",
+      "Bash(npm run dev:*)",
+      "Bash(pkill:*)",
+      "Bash(true)",
+      "Bash(kill:*)",
+      "Bash(curl:*)",
+      "Bash(chmod:*)",
+      "Bash(./run-dev.sh:*)",
+      "Bash(bash:*)",
+      "Bash(pgrep:*)",
+      "Bash(mount:*)",
+      "Bash(wsl.exe:*)",
+      "Bash(cat:*)",
+      "Bash(fuser:*)",
+      "Bash(grep:*)",
+      "Bash(npm cache:*)"
+    ],
+    "deny": []
+  }
+}

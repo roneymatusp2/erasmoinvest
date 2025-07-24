@@ -75,15 +75,50 @@ const getMarketData = async (ticker: string): Promise<MarketDataResponse | null>
     }
 };
 
-// FUNÇÃO CORRIGIDA: Agora passa `portfolio.ticker` para getMarketData.
+// FUNÇÃO OTIMIZADA: Busca dados em paralelo com timeout
 const getMultipleMarketData = async (portfolios: Portfolio[]): Promise<Map<string, MarketDataResponse>> => {
     const marketDataMap = new Map<string, MarketDataResponse>();
-    for (const portfolio of portfolios) {
-        const data = await getMarketData(portfolio.ticker);
-        if (data) {
-            marketDataMap.set(portfolio.ticker, data);
+    
+    // Processar em lotes para evitar sobrecarga
+    const batchSize = 5;
+    const batches = [];
+    
+    for (let i = 0; i < portfolios.length; i += batchSize) {
+        batches.push(portfolios.slice(i, i + batchSize));
+    }
+    
+    console.log(`📊 Buscando dados de mercado em ${batches.length} lotes de até ${batchSize} ativos...`);
+    
+    for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        console.log(`🔄 Processando lote ${i + 1}/${batches.length}: ${batch.map(p => p.ticker).join(', ')}`);
+        
+        // Processar lote em paralelo com timeout
+        const promises = batch.map(portfolio => 
+            Promise.race([
+                getMarketData(portfolio.ticker),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)) // 3s timeout
+            ])
+        );
+        
+        const results = await Promise.all(promises);
+        
+        // Adicionar resultados ao mapa
+        results.forEach((data, index) => {
+            if (data) {
+                marketDataMap.set(batch[index].ticker, data);
+            } else {
+                console.warn(`⚠️ Timeout ou erro ao buscar dados de ${batch[index].ticker}`);
+            }
+        });
+        
+        // Pequena pausa entre lotes para não sobrecarregar
+        if (i < batches.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
     }
+    
+    console.log(`✅ Dados de mercado obtidos para ${marketDataMap.size} de ${portfolios.length} ativos`);
     return marketDataMap;
 };
 

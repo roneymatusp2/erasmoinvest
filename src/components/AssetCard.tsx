@@ -163,9 +163,9 @@ const AssetCard: React.FC<AssetCardProps> = ({ portfolio, onClick, isActive, ind
         </div>
       </div>
 
-      {isActive && (
+      {/* isActive && (
         <div className={`absolute top-2 right-2 w-3 h-3 ${colors.accent} rounded-full animate-pulse`}></div>
-      )}
+      ) */}
       </div>
     </motion.div>
   );

@@ -43,8 +43,25 @@ export const investmentService = {
       throw error;
     }
 
-    // O retorno da RPC já está no formato de Portfolio[], então retornamos diretamente.
-    return data || [];
+    // Mapear os dados da função SQL para o formato Portfolio
+    const portfolios: Portfolio[] = (data || []).map((row: any) => ({
+      ticker: row.ticker,
+      totalInvested: Number(row.totalInvested || 0),
+      totalDividends: Number(row.totalDividends || 0),
+      totalJuros: Number(row.totalJuros || 0),
+      totalImpostos: Number(row.totalImpostos || 0),
+      currentPosition: Number(row.currentPosition || 0),
+      averagePrice: Number(row.averagePrice || 0),
+      currentPrice: Number(row.currentPrice || 0),
+      marketValue: Number(row.currentValue || 0),
+      profit: Number(row.potentialProfitLoss || 0),
+      profitPercent: Number(row.potentialProfitLossPct || 0),
+      totalYield: 0, // Será calculado depois
+      investments: row.investments || [], // Agora temos as transações individuais!
+      transactions: row.transactions || []
+    }));
+
+    return portfolios;
   }
 };
 
@@ -176,18 +193,38 @@ export const portfolioService = {
       console.log(`💲 [CORE] Taxa de câmbio USD-BRL: ${usdToBrlRate}`);
       console.log(`📝 [CORE] Metadados carregados: ${metadata.length} ativos`);
 
-      // 2. Anexa os metadados aos portfólios recebidos
+      // 2. Anexa os metadados aos portfólios recebidos e calcula totalYield
       const portfoliosWithMetadata = portfoliosFromRPC.map(p => {
         const meta = metadata.find(m => m.ticker === p.ticker);
-        return { ...p, metadata: meta || createAutoMetadata(p.ticker) };
+        // Calcular totalYield
+        const totalProventos = p.totalDividends + p.totalJuros;
+        const totalYield = p.totalInvested > 0 ? (totalProventos / p.totalInvested) * 100 : 0;
+        
+        return { 
+          ...p, 
+          metadata: meta || createAutoMetadata(p.ticker),
+          totalYield
+        };
       });
 
       console.log('💹 [CORE] Buscando dados de mercado para todos os ativos...');
       
       // 3. Busca os preços de mercado para todos os ativos de uma vez
-      const marketDataMap = await marketApiService.getMultipleMarketData(portfoliosWithMetadata);
+      let marketDataMap = new Map<string, MarketDataResponse>();
       
-      console.log(`✅ [CORE] Dados de mercado obtidos para ${marketDataMap.size}/${portfoliosWithMetadata.length} ativos`);
+      // Adicionar flag temporária para pular busca de mercado se estiver muito lento
+      const SKIP_MARKET_DATA = false; // Mude para true se quiser pular temporariamente
+      
+      if (!SKIP_MARKET_DATA) {
+        try {
+          marketDataMap = await marketApiService.getMultipleMarketData(portfoliosWithMetadata);
+          console.log(`✅ [CORE] Dados de mercado obtidos para ${marketDataMap.size}/${portfoliosWithMetadata.length} ativos`);
+        } catch (error) {
+          console.error('❌ Erro ao buscar dados de mercado, continuando com preços médios:', error);
+        }
+      } else {
+        console.log('⚠️ PULANDO busca de dados de mercado (modo desenvolvimento)');
+      }
 
       const finalPortfolios: Portfolio[] = [];
       let totalConvertedValue = 0;

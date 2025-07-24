@@ -22,21 +22,26 @@ interface AssetDetailsProps {
   totalInvested: number;
   totalYield: number;
   currentPosition: number;
+  marketValue?: number;
+  currentPrice?: number;
 }
 
 const AssetDetails: React.FC<AssetDetailsProps> = ({ 
   metadata, 
   totalInvested, 
   totalYield, 
-  currentPosition 
+  currentPosition,
+  marketValue: portfolioMarketValue,
+  currentPrice: portfolioCurrentPrice
 }) => {
   const [marketData, setMarketData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // 🚨 DESABILITADO TEMPORARIAMENTE - Evitar piscar infinito
   useEffect(() => {
     const fetchMarketData = async () => {
       try {
-        setLoading(true);
+        // setLoading(true); // ❌ COMENTADO para evitar piscar
         const data = await marketApiService.getMarketData(metadata.ticker);
         setMarketData(data);
       } catch (error) {
@@ -46,15 +51,19 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
       }
     };
 
+    // Buscar dados de mercado apenas uma vez ao montar
     fetchMarketData();
     
-    // Atualizar a cada 30 segundos
-    const interval = setInterval(fetchMarketData, 30000);
-    return () => clearInterval(interval);
+    // ✅ INTERVALO REMOVIDO - Evita piscar constante
+    // const interval = setInterval(fetchMarketData, 30000);
+    // return () => clearInterval(interval);
   }, [metadata.ticker]);
 
   // 💰 CALCULAR VALORES REAIS
-  const currentMarketValue = marketData ? currentPosition * marketData.currentPrice : 0;
+  // Usar marketData se disponível, senão usar valores do portfolio
+  const currentMarketValue = marketData 
+    ? currentPosition * marketData.currentPrice 
+    : (portfolioMarketValue || (currentPosition * (portfolioCurrentPrice || 0)));
   const totalProfit = currentMarketValue - totalInvested;
   const profitPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
   const isProfit = totalProfit >= 0;
@@ -166,6 +175,15 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
                   <span>{formatPercent(marketData.priceChangePercent || 0)}</span>
                 </div>
               </div>
+            ) : portfolioCurrentPrice ? (
+              <div>
+                <div className="text-3xl font-bold text-white mb-1">
+                  {formatCurrency(portfolioCurrentPrice, metadata.moeda || 'BRL')}
+                </div>
+                <div className="text-sm text-slate-400">
+                  Preço médio do portfolio
+                </div>
+              </div>
             ) : (
               <div className="text-xl text-slate-400">Preço indisponível</div>
             )}
@@ -208,7 +226,11 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
               {formatCurrency(currentMarketValue, marketData?.currency)}
             </div>
             <div className="text-xs text-slate-500">
-              {marketData ? `${currentPosition.toLocaleString('pt-BR')} × ${formatCurrency(marketData.currentPrice, marketData.currency)}` : 'Calculando...'}
+              {marketData ? 
+                `${currentPosition.toLocaleString('pt-BR')} × ${formatCurrency(marketData.currentPrice, marketData.currency)}` : 
+                portfolioCurrentPrice ? 
+                  `${currentPosition.toLocaleString('pt-BR')} × ${formatCurrency(portfolioCurrentPrice, metadata.moeda || 'BRL')}` :
+                  'Aguardando preço de mercado...'}
             </div>
           </div>
 

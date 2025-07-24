@@ -128,12 +128,9 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
 
   const handleTextCommandSuccess = (result: VoiceCommandResult) => {
     console.log('Comando de texto processado:', result);
-    setCommandResult(result.message || result.confirmation || 'Comando processado');
-    
-    // Limpar resultado após 8 segundos
-    setTimeout(() => {
-      setCommandResult('');
-    }, 8000);
+    // Priorizar answer, depois message, depois confirmation
+    const displayMessage = result.answer || result.message || result.confirmation || 'Comando processado';
+    setCommandResult(displayMessage);
   };
 
   // Controles de áudio
@@ -156,40 +153,6 @@ export default function VoiceCommandButton({ className = '' }: VoiceCommandButto
     voiceService.stopAudio();
     setHasAudioReady(false);
   };
-
-  // Limpar resultado da transcrição e resposta quando necessário
-  useEffect(() => {
-    if (commandResult) {
-      // Limpar resultado após 10 segundos
-      const timer = setTimeout(() => {
-        setCommandResult('');
-      }, 10000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [commandResult]);
-
-  useEffect(() => {
-    if (transcription && !isProcessing) {
-      // Limpar transcrição após 3 segundos quando não está processando
-      const timer = setTimeout(() => {
-        setTranscription('');
-      }, 3000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [transcription, isProcessing]);
-
-  // Limpar erro após 5 segundos
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => {
-        setError(null);
-      }, 5000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [error]);
 
   if (!isSupported) {
     return (

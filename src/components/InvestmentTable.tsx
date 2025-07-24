@@ -360,6 +360,8 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
           totalInvested={portfolio.totalInvested}
           totalYield={portfolio.totalYield}
           currentPosition={portfolio.currentPosition}
+          marketValue={portfolio.marketValue}
+          currentPrice={portfolio.currentPrice}
         />
       )}
       

@@ -33,41 +33,25 @@ const AdvancedPieChart: React.FC<AdvancedPieChartProps> = ({
   is3d = true
 }) => {
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [hoverDelayTimeout, setHoverDelayTimeout] = useState<NodeJS.Timeout | null>(null); 
   const [animationComplete, setAnimationComplete] = useState(false);
 
   useEffect(() => {
-    // After initial animation, set flag to true
-    const timer = setTimeout(() => {
-      setAnimationComplete(true);
-    }, 1500); // Match with animation duration
-    
-    return () => clearTimeout(timer);
-  }, []);
+    // After initial animation, set flag to true (apenas uma vez)
+    if (!animationComplete) {
+      const timer = setTimeout(() => {
+        setAnimationComplete(true);
+      }, 1500); // Match with animation duration
+      
+      return () => clearTimeout(timer);
+    }
+  }, [animationComplete]);
 
   const onPieEnter = (_: any, index: number) => {
-    if (hoverDelayTimeout) {
-      clearTimeout(hoverDelayTimeout);
-    }
-    
-    // Small delay to prevent flickering on hover
-    const timeout = setTimeout(() => {
-      setActiveIndex(index);
-    }, 50);
-    
-    setHoverDelayTimeout(timeout);
+    setActiveIndex(index);
   };
   
   const onPieLeave = () => {
-    if (hoverDelayTimeout) {
-      clearTimeout(hoverDelayTimeout);
-    }
-    
-    const timeout = setTimeout(() => {
-      setActiveIndex(-1);
-    }, 50);
-    
-    setHoverDelayTimeout(timeout);
+    setActiveIndex(-1);
   };
 
   const renderActiveShape = (props: any) => {
@@ -243,7 +227,6 @@ const AdvancedPieChart: React.FC<AdvancedPieChartProps> = ({
               cx="50%"
               cy="50%"
               labelLine={false}
-              activeIndex={activeIndex}
               activeShape={renderActiveShape}
               innerRadius={is3d ? 60 : 0}
               outerRadius={120}
@@ -251,7 +234,7 @@ const AdvancedPieChart: React.FC<AdvancedPieChartProps> = ({
               dataKey="value"
               onMouseEnter={onPieEnter}
               onMouseLeave={onPieLeave}
-              animationDuration={1500}
+              animationDuration={animate ? 1200 : 0}
               animationBegin={0}
               animationEasing="ease-out"
               isAnimationActive={animate}

@@ -1,233 +1,183 @@
-# 🚀 **ERASMO INVEST** - Sistema Inteligente de Gestão de Investimentos
+# Supabase CLI
 
-![Versão](https://img.shields.io/badge/versão-2.0.0-blue.svg)
-![Status](https://img.shields.io/badge/status-produção-green.svg)
-![IA](https://img.shields.io/badge/IA-integrada-purple.svg)
+[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=main)](https://coveralls.io/github/supabase/cli?branch=main) [![Bitbucket Pipelines](https://img.shields.io/bitbucket/pipelines/supabase-cli/setup-cli/master?style=flat-square&label=Bitbucket%20Canary)](https://bitbucket.org/supabase-cli/setup-cli/pipelines) [![Gitlab Pipeline Status](https://img.shields.io/gitlab/pipeline-status/sweatybridge%2Fsetup-cli?label=Gitlab%20Canary)
+](https://gitlab.com/sweatybridge/setup-cli/-/pipelines)
 
-## 🎯 **VISÃO GERAL**
+[Supabase](https://supabase.io) is an open source Firebase alternative. We're building the features of Firebase using enterprise-grade open source tools.
 
-**Erasmo Invest** é uma plataforma completa e inteligente para gestão de investimentos pessoais, com **comandos de voz e IA integrada**. Desenvolvido com React + TypeScript + Supabase, oferece uma experiência moderna e intuitiva para controlar seu portfólio.
+This repository contains all the functionality for Supabase CLI.
 
-### 🌟 **NOVIDADES v2.0**
-- 🎤 **Comandos de Voz** - Controle total por voz com detecção automática de silêncio
-- 🧠 **IA Integrada** - Mistral AI + OpenAI para processamento de linguagem natural
-- 🔊 **Resposta em Áudio** - Síntese de fala com OpenAI TTS
-- 📝 **Comandos de Texto** - Interface moderna para comandos escritos
-- ⚡ **Edge Functions** - Backend serverless com Supabase
+- [x] Running Supabase locally
+- [x] Managing database migrations
+- [x] Creating and deploying Supabase Functions
+- [x] Generating types directly from your database schema
+- [x] Making authenticated HTTP requests to [Management API](https://supabase.com/docs/reference/api/introduction)
 
-## 🚀 **ACESSO RÁPIDO**
+## Getting started
 
-### 🌐 **Aplicação Online**
-**URL**: [https://erasmoinvest.netlify.app](https://erasmoinvest.netlify.app)
+### Install the CLI
 
-### 🔑 **Login**
-- **Senha**: `ErasmoInvest12!@`
+Available via [NPM](https://www.npmjs.com) as dev dependency. To install:
 
-## 🎮 **COMANDOS DE VOZ E TEXTO**
-
-### 🎤 **Como Usar Comandos de Voz**
-1. Pressione e **segure** o botão azul "Comando de Voz"
-2. Fale seu comando claramente
-3. **Solte** o botão (ou aguarde 2s de silêncio)
-4. Aguarde a IA processar e responder
-
-### 📝 **Como Usar Comandos de Texto**
-1. Clique no botão "Texto"
-2. Digite seu comando
-3. Pressione "Enviar Comando"
-
-### 💬 **Exemplos de Comandos**
-
-#### **📊 Consultar Portfólio**
-```
-"Como está meu portfólio?"
-"Qual o valor total dos meus investimentos?"
-"Quantos ativos eu tenho?"
-```
-
-#### **🔍 Consultar Ativos**
-```
-"Quantas ações da Vale eu tenho?"
-"Como está o Banco do Brasil?"
-"Mostre informações da Petrobras"
-"Como está o Tesouro Selic 2026?"  # 🏛️ Novo!
-```
-
-#### **➕ Adicionar Investimentos**
-```
-"Adicione 10 ações da Vale por 25 reais"
-"Comprei 5 ações do Banco do Brasil a 30,50"
-"Adicione 100 ações da Petrobras por 35 reais cada"
-"Comprei 1000 reais do Tesouro Selic 2026"  # 🏛️ Novo!
-```
-
-## 🏗️ **ARQUITETURA TÉCNICA**
-
-### **Frontend**
-- ⚛️ **React 18** + TypeScript
-- 🎨 **Tailwind CSS** + Framer Motion
-- 📱 **Responsive Design**
-- 🔥 **Vite** (build ultra-rápido)
-
-### **Backend**
-- 🐘 **Supabase PostgreSQL** (banco de dados)
-- ⚡ **Edge Functions** (Deno + TypeScript)
-- 🔒 **Row Level Security** (RLS)
-- 🌐 **Real-time updates**
-
-### **IA e APIs**
-- 🧠 **Mistral AI** (processamento de comandos)
-- 🎵 **OpenAI Whisper** (speech-to-text)
-- 🔊 **OpenAI TTS** (text-to-speech)
-- 📊 **APIs de Mercado** (dados em tempo real)
-
-## 🛠️ **DESENVOLVIMENTO LOCAL**
-
-### **Pré-requisitos**
-- Node.js 18+
-- npm ou yarn
-
-### **Instalação**
 ```bash
-# Clone o repositório
-git clone https://github.com/roneymatusp2/erasmoinvest.git
-
-# Entre na pasta
-cd erasmoinvest
-
-# Instale dependências
-npm install
-
-# Configure variáveis de ambiente
-cp .env.example .env
-# Edite .env com suas chaves
-
-# Inicie desenvolvimento
-npm run dev
+npm i supabase --save-dev
 ```
 
-### **Scripts Disponíveis**
+To install the beta release channel:
+
 ```bash
-npm run dev          # Desenvolvimento
-npm run build        # Build produção
-npm run preview      # Preview do build
-npm run type-check   # Verificar tipos
-npm run lint         # Verificar código
-npm run build:check  # Build + verificações
+npm i supabase@beta --save-dev
 ```
 
-## 📊 **FUNCIONALIDADES PRINCIPAIS**
+When installing with yarn 4, you need to disable experimental fetch with the following nodejs config.
 
-### **💼 Gestão de Portfólio**
-- ➕ Adicionar investimentos (ações, FIIs, ETFs, REITs)
-- 📈 Acompanhar performance em tempo real
-- 💰 Controle de dividendos e juros
-- 📊 Análise de rentabilidade e DY
-
-### **📱 Interface Moderna**
-- 🌙 **Tema escuro** elegante
-- 📱 **Responsivo** (mobile-first)
-- ⚡ **Animações fluidas** com Framer Motion
-- 🎨 **Componentes reutilizáveis**
-
-### **📊 Dashboards Inteligentes**
-- 📈 **Overview geral** do portfólio
-- 🥧 **Gráficos interativos** (pizza, barras, linhas)
-- 📋 **Tabelas detalhadas** com filtros
-- 📤 **Exportação Excel** profissional
-
-### **🔍 Análise Avançada**
-- 💹 **Cálculo automático** de preço médio
-- 📊 **Dividend Yield** por ativo e total
-- 🎯 **Alocação por setor/tipo/país**
-- 📈 **Performance histórica**
-
-## 🔧 **CONFIGURAÇÃO SUPABASE**
-
-### **Variáveis de Ambiente**
-```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+NODE_OPTIONS=--no-experimental-fetch yarn add supabase
 ```
 
-### **Edge Functions**
+> **Note**
+For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency](https://bun.sh/guides/install/trusted) before running `bun add -D supabase`.
+
+<details>
+  <summary><b>macOS</b></summary>
+
+  Available via [Homebrew](https://brew.sh). To install:
+
+  ```sh
+  brew install supabase/tap/supabase
+  ```
+
+  To install the beta release channel:
+  
+  ```sh
+  brew install supabase/tap/supabase-beta
+  brew link --overwrite supabase-beta
+  ```
+  
+  To upgrade:
+
+  ```sh
+  brew upgrade supabase
+  ```
+</details>
+
+<details>
+  <summary><b>Windows</b></summary>
+
+  Available via [Scoop](https://scoop.sh). To install:
+
+  ```powershell
+  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
+  scoop install supabase
+  ```
+
+  To upgrade:
+
+  ```powershell
+  scoop update supabase
+  ```
+</details>
+
+<details>
+  <summary><b>Linux</b></summary>
+
+  Available via [Homebrew](https://brew.sh) and Linux packages.
+
+  #### via Homebrew
+
+  To install:
+
+  ```sh
+  brew install supabase/tap/supabase
+  ```
+
+  To upgrade:
+
+  ```sh
+  brew upgrade supabase
+  ```
+
+  #### via Linux packages
+
+  Linux packages are provided in [Releases](https://github.com/supabase/cli/releases). To install, download the `.apk`/`.deb`/`.rpm`/`.pkg.tar.zst` file depending on your package manager and run the respective commands.
+
+  ```sh
+  sudo apk add --allow-untrusted <...>.apk
+  ```
+
+  ```sh
+  sudo dpkg -i <...>.deb
+  ```
+
+  ```sh
+  sudo rpm -i <...>.rpm
+  ```
+
+  ```sh
+  sudo pacman -U <...>.pkg.tar.zst
+  ```
+</details>
+
+<details>
+  <summary><b>Other Platforms</b></summary>
+
+  You can also install the CLI via [go modules](https://go.dev/ref/mod#go-install) without the help of package managers.
+
+  ```sh
+  go install github.com/supabase/cli@latest
+  ```
+
+  Add a symlink to the binary in `$PATH` for easier access:
+
+  ```sh
+  ln -s "$(go env GOPATH)/bin/cli" /usr/bin/supabase
+  ```
+
+  This works on other non-standard Linux distros.
+</details>
+
+<details>
+  <summary><b>Community Maintained Packages</b></summary>
+
+  Available via [pkgx](https://pkgx.sh/). Package script [here](https://github.com/pkgxdev/pantry/blob/main/projects/supabase.com/cli/package.yml).
+  To install in your working directory:
+
+  ```bash
+  pkgx install supabase
+  ```
+
+  Available via [Nixpkgs](https://nixos.org/). Package script [here](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/supabase-cli/default.nix).
+</details>
+
+### Run the CLI
+
 ```bash
-supabase functions deploy transcribe-audio
-supabase functions deploy process-command
-supabase functions deploy execute-command
-supabase functions deploy text-to-speech
-supabase functions deploy tesouro-direto-proxy  # 🏛️ Novo!
+supabase bootstrap
 ```
 
-### **🏛️ Tesouro Direto Integration**
-Implementamos uma Edge Function para resolver problemas de CORS com a API do Tesouro Direto:
+Or using npx:
 
-- **Função**: `tesouro-direto-proxy`
-- **URL**: `https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/tesouro-direto-proxy`
-- **Propósito**: Proxy seguro para API oficial do Tesouro Direto
-- **Status**: ✅ Ativo e funcionando
-
-## 📱 **DEPLOY**
-
-### **Netlify (Automático)**
-- 🔄 **Deploy automático** via GitHub
-- 🌐 **CDN global** para performance
-- 🔒 **HTTPS** por padrão
-- ⚡ **Build otimizado** com Vite
-
-### **Variáveis no Netlify**
-```env
-VITE_SUPABASE_URL=https://gjvtncdjcslnkfctqnfy.supabase.co
-VITE_SUPABASE_ANON_KEY=your-key-here
+```bash
+npx supabase bootstrap
 ```
 
-## 🔒 **SEGURANÇA**
+The bootstrap command will guide you through the process of setting up a Supabase project using one of the [starter](https://github.com/supabase-community/supabase-samples/blob/main/samples.json) templates.
 
-- 🛡️ **Row Level Security** (RLS) no Supabase
-- 🔐 **Autenticação segura** com tokens
-- 🔒 **API keys** protegidas em Edge Functions
-- 🌐 **CORS** configurado corretamente
+## Docs
 
-## 🎯 **ROADMAP**
+Command & config reference can be found [here](https://supabase.com/docs/reference/cli/about).
 
-### **✅ Concluído (v2.0)**
-- [x] Sistema de comandos de voz
-- [x] IA integrada (Mistral + OpenAI)
-- [x] Edge Functions Supabase
-- [x] Interface moderna e responsiva
-- [x] Dashboards avançados
-- [x] Exportação Excel profissional
+## Breaking changes
 
-### **🔮 Próximas Versões**
-- [ ] **App Mobile** (React Native)
-- [ ] **Notificações Push** para dividendos
-- [ ] **Análise técnica** com indicadores
-- [ ] **Social trading** e compartilhamento
-- [ ] **API pública** para integrações
+We follow semantic versioning for changes that directly impact CLI commands, flags, and configurations.
 
-## 🤝 **CONTRIBUIÇÃO**
+However, due to dependencies on other service images, we cannot guarantee that schema migrations, seed.sql, and generated types will always work for the same CLI major version. If you need such guarantees, we encourage you to pin a specific version of CLI in package.json.
 
-Contribuições são bem-vindas! Por favor:
+## Developing
 
-1. Fork o projeto
-2. Crie uma branch para sua feature
-3. Commit suas mudanças
-4. Push para a branch
-5. Abra um Pull Request
+To run from source:
 
-## 📄 **LICENÇA**
-
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para detalhes.
-
-## 👨‍💻 **AUTOR**
-
-**Roney Mateus**
-- 🐙 GitHub: [@roneymatusp2](https://github.com/roneymatusp2)
-- 📧 Email: roney.mateus@example.com
-- 💼 LinkedIn: [roney-mateus](https://linkedin.com/in/roney-mateus)
-
----
-
-### 🎉 **ERASMO INVEST - INTELIGÊNCIA ARTIFICIAL PARA SEUS INVESTIMENTOS!**
-
-**Transforme sua gestão de investimentos com comandos de voz e IA! 🚀**
+```sh
+# Go >= 1.22
+go run . help
+```
