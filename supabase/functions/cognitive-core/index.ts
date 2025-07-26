@@ -1,1084 +1,798 @@
 /**
  * 🧠 COGNITIVE-CORE - Motor Principal IA Conversacional
- * Modelo: Qwen3-235B-A22B-Instruct-2507 (GRATUITO)
- * Embeddings: gemini-embedding-001 (OFICIAL)
- * Context: 262K tokens
- * Status: IMPLEMENTAÇÃO COMPLETA JULHO 2025
+ * LLM: Qwen3-235B-A22B-Instruct-2507 (GRATUITO)
+ * Embeddings: gemini-embedding-001 (MAIS NOVO - 768d normalizado)
+ * Context: 128K tokens
+ * Status: IMPLEMENTAÇÃO COMPLETA JULHO 2025 - ERASMO OPTIMIZED
  * Economia: 100% vs. GPT-4 ($0.03/1K → GRATUITO)
- */
-
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-interface QwenMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
-
-interface CognitiveRequest {
-  // ✅ SUPORTE A QUERIES DIRETAS
-  query?: string
-  user_id?: string
-  context_id?: string
-  conversation_history?: QwenMessage[]
-  
-  // ✅ SUPORTE A ACTIONS (para explain_chart, etc)
-  action?: string
-  payload?: any
-  userId?: string // alternativa para user_id
-}
-
+ *
+ * OTIMIZAÇÕES ERASMO:
+ * - Prioriza Portfolio Snapshot como fonte oficial
+ * - Busca específica para tickers individuais
+ * - Tratamento especial para TESOURO DIRETO
+ * - Dados sempre da tabela investments (user: 4362da88-d01c-4ffe-a447-75751ea8e182)
+ * - Resposta precisa baseada em dados reais calculados
+ */ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 /**
  * 🆓 QWEN3-235B CLIENT - MODELO ESTADO-DA-ARTE GRATUITO
  * Performance: 40% superior ao GPT-4
- * Context: 262K tokens
+ * Context: 128K tokens vs. 8K GPT-4
  * Custo: TOTALMENTE GRATUITO
- */
-class QwenClient {
-  private apiKey: string
-  private thinkingApiKey: string
-  private baseUrl: string = "https://openrouter.ai/api/v1"
-  private model: string = "qwen/qwen3-235b-a22b-2507:free"
-  private thinkingModel: string = "qwen/qwen3-235b-a22b-thinking-2507"
-
-  constructor() {
-    this.apiKey = Deno.env.get("QWEN_OPENROUTER_API")!
-    this.thinkingApiKey = Deno.env.get("QWEN_OPENROUTER_API_THINKING")!
-    
-    if (!this.apiKey || !this.thinkingApiKey) {
-      throw new Error("QWEN_OPENROUTER_API and QWEN_OPENROUTER_API_THINKING environment variables required")
+ */ class QwenClient {
+    apiKey;
+    thinkingApiKey;
+    baseUrl = "https://openrouter.ai/api/v1";
+    model = "qwen/qwen3-235b-a22b-2507";
+    thinkingModel = "qwen/qwen3-235b-a22b-thinking-2507";
+    constructor(){
+        this.apiKey = Deno.env.get("QWEN_OPENROUTER_API");
+        this.thinkingApiKey = Deno.env.get("QWEN_OPENROUTER_API_THINKING");
+        if (!this.apiKey || !this.thinkingApiKey) {
+            throw new Error("QWEN_OPENROUTER_API and QWEN_OPENROUTER_API_THINKING environment variables required");
+        }
     }
-  }
-
-  async complete(messages: QwenMessage[], options: {
-    temperature?: number
-    max_tokens?: number
-    stream?: boolean
-    use_thinking?: boolean
-  } = {}): Promise<any> {
-    const useThinking = options.use_thinking ?? false
-    const model = useThinking ? this.thinkingModel : this.model
-    const apiKey = useThinking ? this.thinkingApiKey : this.apiKey
-
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://erasmoinvest.app',
-        'X-Title': 'ErasmoInvest AI Assistant'
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.max_tokens ?? 4000,
-        stream: options.stream ?? false,
-        top_p: 0.95,
-        frequency_penalty: 0.1,
-        presence_penalty: 0.1,
-        extra_body: {}
-      })
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Qwen API Error: ${response.status} - ${error}`)
+    async complete(messages, options = {}) {
+        const useThinking = options.use_thinking ?? false;
+        const model = useThinking ? this.thinkingModel : this.model;
+        const apiKey = useThinking ? this.thinkingApiKey : this.apiKey;
+        const response = await fetch(`${this.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://erasmoinvest.app',
+                'X-Title': 'ErasmoInvest AI Assistant'
+            },
+            body: JSON.stringify({
+                model,
+                messages,
+                temperature: options.temperature ?? 0.7,
+                max_tokens: options.max_tokens ?? 4000,
+                stream: options.stream ?? false,
+                top_p: 0.95,
+                frequency_penalty: 0.1,
+                presence_penalty: 0.1,
+                extra_body: {}
+            })
+        });
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Qwen API Error: ${response.status} - ${error}`);
+        }
+        return await response.json();
     }
-
-    return await response.json()
-  }
-
-  /**
-   * 🧠 ANÁLISE COMPLEXA COM THINKING MODEL
-   * Usa o modelo de raciocínio para análises financeiras profundas
-   */
-  async deepAnalysis(messages: QwenMessage[], analysisType: 'portfolio' | 'market' | 'risk' | 'strategy'): Promise<any> {
-    return this.complete(messages, {
-      use_thinking: true,
-      temperature: 0.3, // Mais determinístico para análises
-      max_tokens: 6000 // Mais tokens para raciocínio completo
-    })
-  }
+    /**
+     * 🧠 ANÁLISE COMPLEXA COM THINKING MODEL
+     * Usa o modelo de raciocínio para análises financeiras profundas
+     */ async deepAnalysis(messages, analysisType) {
+        return this.complete(messages, {
+            use_thinking: true,
+            temperature: 0.3,
+            max_tokens: 6000 // Mais tokens para raciocínio completo
+        });
+    }
 }
-
 /**
- * 🔍 GEMINI EMBEDDING CLIENT - MODELO OFICIAL CORRIGIDO
- * Modelo: gemini-embedding-001 (768d)
+ * 🔍 GEMINI EMBEDDING CLIENT - ATUALIZADO
+ * Modelo: gemini-embedding-001 (MAIS NOVO - 768d otimizado)
+ * Custo: Único componente pago necessário
  * Performance: Otimizada para português brasileiro
- */
-class GeminiEmbeddingClient {
-  private apiKey: string
-  private baseUrl: string = "https://generativelanguage.googleapis.com/v1beta"
-
-  constructor() {
-    this.apiKey = Deno.env.get("Gemini_Embedding")!
-    if (!this.apiKey) {
-      throw new Error("Gemini_Embedding API key required")
-    }
-  }
-
-  async embed(text: string, taskType: string = "RETRIEVAL_QUERY"): Promise<number[]> {
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/models/gemini-embedding-001:embedContent?key=${this.apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: "models/gemini-embedding-001",
-            content: { parts: [{ text }] },
-            taskType,
-            outputDimensionality: 768
-          })
+ */ class GeminiEmbeddingClient {
+    apiKey;
+    baseUrl = "https://generativelanguage.googleapis.com/v1beta";
+    constructor(){
+        this.apiKey = Deno.env.get("Gemini_Embedding");
+        if (!this.apiKey) {
+            throw new Error("Gemini_Embedding API key required");
         }
-      )
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`Gemini Embedding Error: ${response.status} - ${errorText}`)
-      }
-
-      const data = await response.json()
-      return data.embedding?.values || []
-    } catch (error) {
-      console.error('Gemini embedding error:', error)
-      // Fallback: retornar array vazio se embedding falhar
-      return new Array(768).fill(0)
     }
-  }
+    async embed(text, taskType = "RETRIEVAL_QUERY") {
+        const response = await fetch(`${this.baseUrl}/models/gemini-embedding-001:embedContent?key=${this.apiKey}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: "models/gemini-embedding-001",
+                content: {
+                    parts: [
+                        {
+                            text
+                        }
+                    ]
+                },
+                taskType,
+                outputDimensionality: 768 // Otimizado para custo/performance
+            })
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Gemini Embedding Error: ${response.status} - ${errorText}`);
+        }
+        const data = await response.json();
+        // Normalizar embeddings para dimensões menores que 3072
+        const values = data.embedding.values;
+        const norm = Math.sqrt(values.reduce((sum, val)=>sum + val * val, 0));
+        const normalizedValues = values.map((val)=>val / norm);
+        return normalizedValues;
+    }
 }
-
 /**
- * 🧠 COGNITIVE CORE - MOTOR PRINCIPAL
- * Integração completa: Qwen3 + Gemini Embeddings + PostgreSQL RAG
- */
-class CognitiveCore {
-  private qwen: QwenClient
-  private embeddings: GeminiEmbeddingClient
-  private supabase: any
-
-  constructor() {
-    this.qwen = new QwenClient()
-    this.embeddings = new GeminiEmbeddingClient()
-    
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    this.supabase = createClient(supabaseUrl, supabaseKey)
-  }
-
-  /**
-   * 🔍 BUSCA HÍBRIDA AVANÇADA
-   * Combina: Embedding Similarity + Full-Text Search + Metadata Filtering
-   */
-  async hybridSearch(queryEmbedding: number[], query: string, userId: string) {
-    try {
-      // 1. Busca por similaridade semântica (com fallback seguro)
-      let semanticResults = []
-      
-      try {
-        const { data, error } = await this.supabase.rpc('hybrid_search_financial_data', {
-          query_embedding: queryEmbedding,
-          query_text: query,
-          user_id: userId,
-          similarity_threshold: 0.75,
-          limit_results: 10
-        })
-
-        if (error) {
-          throw error // Joga o erro para o bloco catch principal
+ * 🧠 COGNITIVE CORE - MOTOR PRINCIPAL ERASMO-OPTIMIZED
+ * Integração completa: Qwen3 + Gemini Embeddings + Portfolio Snapshots + Investments Table
+ */ class CognitiveCore {
+    qwen;
+    embeddings;
+    supabase;
+    // Constantes do Erasmo
+    ERASMO_USER_ID = "4362da88-d01c-4ffe-a447-75751ea8e182";
+    ERASMO_PASSWORD = "ErasmoInvest12!@";
+    constructor(){
+        this.qwen = new QwenClient();
+        this.embeddings = new GeminiEmbeddingClient();
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        this.supabase = createClient(supabaseUrl, supabaseKey);
+    }
+    /**
+     * 🎯 DETERMINAR TASK TYPE OTIMIZADO
+     * Baseado na documentação do Gemini Embedding
+     */ getOptimalTaskType(query) {
+        const lowerQuery = query.toLowerCase();
+        // QUESTION_ANSWERING para perguntas diretas
+        if (lowerQuery.includes('o que') || lowerQuery.includes('como') || lowerQuery.includes('quando') || lowerQuery.includes('por que') || lowerQuery.includes('quanto') || lowerQuery.includes('qual') || lowerQuery.includes('quantas') || lowerQuery.includes('quantos')) {
+            return 'QUESTION_ANSWERING';
         }
-        semanticResults = data || []
-
-      } catch (rpcError) {
-        console.warn('Hybrid search RPC failed. Falling back to text search.', rpcError.message)
-        // Fallback para busca por texto, que é mais relevante que buscar itens aleatórios.
-        const { data: fallbackData } = await this.supabase
-          .from('financial_data')
-          .select('content')
-          .textSearch('content', `'${query}'`)
-          .eq('user_id', userId)
-          .limit(5)
-        
-        semanticResults = fallbackData || []
-      }
-
-      return {
-        semantic_results: semanticResults,
-        user_context: await this.getUserContext(userId),
-        market_data: await this.getMarketData()
-      }
-    } catch (error) {
-      console.error('Hybrid search error:', error)
-      return {
-        semantic_results: [],
-        user_context: await this.getUserContext(userId),
-        market_data: await this.getMarketData()
-      }
-    }
-  }
-
-  /**
-   * 💱 OBTER COTAÇÃO USD/BRL ATUAL
-   */
-  /**
-   * 💱 OBTER COTAÇÃO USD/BRL ATUAL - REVISÃO FINAL
-   * Combina a chamada correta da API v6 com a estrutura robusta de try/catch.
-   */
-  private async getUSDToBRLRate(): Promise<number> {
-    const fallbackRate = 5.30 // Centralizado para fácil manutenção
-    
-    // 1. Tentar buscar cotação do cache local
-    try {
-      const { data: cachedRate } = await this.supabase
-        .from('currency_rates')
-        .select('rate, updated_at')
-        .eq('pair', 'USDBRL')
-        .gte('updated_at', new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString()) // Cache de 4 horas
-        .single()
-
-      if (cachedRate?.rate) {
-        console.log(`💱 Using cached USD/BRL rate: ${cachedRate.rate}`)
-        return parseFloat(cachedRate.rate)
-      }
-    } catch (cacheError) {
-      // Apenas um aviso, a falha no cache é esperada e normal.
-      console.log('Cache miss or error for USD/BRL rate, proceeding to API call.')
-    }
-
-    // 2. Buscar cotação da API v6 como fonte primária
-    try {
-      const apiKey = Deno.env.get("EXCHANGERATE_API_KEY")
-      if (!apiKey) {
-        throw new Error('Secret EXCHANGERATE_API_KEY not found in Supabase environment.')
-      }
-
-      const url = `https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`
-      const response = await fetch(url, { signal: AbortSignal.timeout(5000) }) // Timeout de 5s
-
-      if (!response.ok) {
-        const errorBody = await response.text()
-        throw new Error(`API request failed with status ${response.status}: ${errorBody}`)
-      }
-
-      const data = await response.json()
-      if (data.result !== 'success') {
-        throw new Error(`API returned an error: ${data['error-type'] || 'Unknown error'}`)
-      }
-
-      const rate = data.conversion_rates?.BRL
-      if (typeof rate !== 'number') {
-        throw new Error(`Invalid or missing BRL rate in API response: ${JSON.stringify(data)}`)
-      }
-
-      // Sucesso! Salvar no cache para futuras requisições.
-      await this.supabase.from('currency_rates').upsert({
-        pair: 'USDBRL',
-        rate: rate.toString(),
-        updated_at: new Date().toISOString()
-      })
-      
-      console.log(`💱 Fetched and cached new USD/BRL rate via v6 API: ${rate}`)
-      return rate
-
-    } catch (apiError) {
-      console.error('CRITICAL: Could not fetch live USD/BRL rate. Using fallback.', apiError)
-      return fallbackRate
-    }
-  }
-
-  private async getUserContext(userId: string) {
-    try {
-      console.log(`🧠 CONTEXT ENGINE V2.0 (Snapshot-first) para user: ${userId}`)
-
-      // 1. TENTAR BUSCAR SNAPSHOT RECENTE (FAST PATH)
-      const SNAPSHOT_MAX_AGE_HOURS = 4
-      try {
-        const { data: snapshot, error } = await this.supabase
-          .from('portfolio_snapshots')
-          .select('snapshot_data, updated_at')
-          .eq('user_id', userId)
-          .single()
-
-        if (error) throw error // Joga para o catch principal do bloco
-
-        if (snapshot && snapshot.snapshot_data) {
-          const snapshotAge = (new Date().getTime() - new Date(snapshot.updated_at).getTime()) / (1000 * 60 * 60)
-          if (snapshotAge < SNAPSHOT_MAX_AGE_HOURS) {
-            console.log(`✅ Fast Path: Usando snapshot recente (${snapshotAge.toFixed(2)} horas).`)
-            // Retorna diretamente os dados do snapshot, que já estão no formato correto
-            return snapshot.snapshot_data
-          }
-          console.log(`⚠️ Snapshot encontrado, mas está antigo (${snapshotAge.toFixed(2)} horas). Prosseguindo para recálculo.`)
+        // CLASSIFICATION para análise de sentimento/classificação
+        if (lowerQuery.includes('classifique') || lowerQuery.includes('categoria') || lowerQuery.includes('tipo de') || lowerQuery.includes('é bom') || lowerQuery.includes('é ruim')) {
+            return 'CLASSIFICATION';
         }
-      } catch (snapshotError) {
-        if (snapshotError.code !== 'PGRST116') { // Ignora erro 'not found'
-          console.warn(`Erro ao buscar snapshot, prosseguindo para recálculo:`, snapshotError.message)
+        // SEMANTIC_SIMILARITY para comparações
+        if (lowerQuery.includes('compare') || lowerQuery.includes('similar') || lowerQuery.includes('parecido') || lowerQuery.includes('melhor que')) {
+            return 'SEMANTIC_SIMILARITY';
         }
-      }
-
-      // 2. SE NÃO HÁ SNAPSHOT VÁLIDO, CALCULAR AO VIVO (SLOW PATH)
-      console.log(`� Slow Path: Calculando contexto ao vivo para o usuário.`)
-      
-      // Dispara a atualização do snapshot em background, sem esperar o resultado.
-      this.supabase.functions.invoke('calculate-snapshot', { body: {} }).then(({ error }) => {
-        if (error) console.error('Erro ao invocar atualização de snapshot em background:', error)
-        else console.log('🚀 Atualização de snapshot iniciada em background.')
-      })
-
-      // O restante da função continua como antes, para servir a requisição atual
-      const usdBrlRate = await this.getUSDToBRLRate()
-      const { data: overviewData } = await this.supabase.rpc('get_portfolio_overview', { p_user_id: userId, p_reference_date: new Date().toISOString().split('T')[0] })
-      const { data: investmentsData } = await this.supabase.rpc('get_investments_by_user_id', { p_user_id: userId, p_reference_date: new Date().toISOString().split('T')[0] })
-      
-      const overview = overviewData?.[0] || {}
-      const investments = investmentsData || []
-
-      const { breakdown, totalValueBRL } = await this.processPortfolioData(investments, usdBrlRate)
-
-      const liveData = {
-        portfolio_stats: {
-          ...overview,
-          total_value_brl: totalValueBRL,
-          last_updated: new Date().toISOString(),
-        },
-        portfolio_breakdown: breakdown,
-        usd_brl_rate: usdBrlRate,
-        raw_data_count: investments.length,
-        version: '2.0-live' // Indica que foi gerado ao vivo
-      }
-
-      return liveData
-
-    } catch (error) {
-      console.error('User context critical error:', error)
-      return {
-        portfolio_stats: {
-          total_invested: 0,
-          current_value: 0,
-          profit_loss: 0,
-          profit_percentage: 0,
-          yield_total: 0,
-          total_positions: 0,
-          last_updated: new Date().toISOString(),
-          error: 'Failed to load portfolio data'
-        },
-        portfolio_breakdown: { by_ticker: [], by_asset_class: {} },
-        usd_brl_rate: 5.30,
-        raw_data_count: 0
-      }
-    }
-  }
-
-  /**
-   * 💱 OBTER COTAÇÃO USD/BRL ATUAL
-   */
-  private async getUSDToBRLRate(): Promise<number> {
-    const fallbackRate = 5.30 // Centralizado para fácil manutenção
-    
-    // 1. Tentar buscar cotação do cache local
-    try {
-      const { data: cachedRate } = await this.supabase
-        .from('currency_rates')
-        .select('rate, updated_at')
-        .eq('pair', 'USDBRL')
-        .gte('updated_at', new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString()) // Cache de 4 horas
-        .single()
-
-      if (cachedRate?.rate) {
-        console.log(`� Using cached USD/BRL rate: ${cachedRate.rate}`)
-        return parseFloat(cachedRate.rate)
-      }
-    } catch (cacheError) {
-      // Apenas um aviso, a falha no cache é esperada e normal.
-      console.log('Cache miss or error for USD/BRL rate, proceeding to API call.')
-    }
-
-    // 2. Buscar cotação da API v6 como fonte primária
-    try {
-      const apiKey = Deno.env.get("EXCHANGERATE_API_KEY")
-      if (!apiKey) {
-        throw new Error('Secret EXCHANGERATE_API_KEY not found in Supabase environment.')
-      }
-
-      const url = `https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`
-      const response = await fetch(url, { signal: AbortSignal.timeout(5000) }) // Timeout de 5s
-
-      if (!response.ok) {
-        const errorBody = await response.text()
-        throw new Error(`API request failed with status ${response.status}: ${errorBody}`)
-      }
-
-      const data = await response.json()
-      if (data.result !== 'success') {
-        throw new Error(`API returned an error: ${data['error-type'] || 'Unknown error'}`)
-      }
-
-      const rate = data.conversion_rates?.BRL
-      if (typeof rate !== 'number') {
-        throw new Error(`Invalid or missing BRL rate in API response: ${JSON.stringify(data)}`)
-      }
-
-      // Sucesso! Salvar no cache para futuras requisições.
-      await this.supabase.from('currency_rates').upsert({
-        pair: 'USDBRL',
-        rate: rate.toString(),
-        updated_at: new Date().toISOString()
-      })
-      
-      console.log(`💱 Fetched and cached new USD/BRL rate via v6 API: ${rate}`)
-      return rate
-
-    } catch (apiError) {
-      console.error('CRITICAL: Could not fetch live USD/BRL rate. Using fallback.', apiError)
-      return fallbackRate
-    }
-  }
-
-  private async processPortfolioData(overview: any, investments: any[], usdBrlRate: number = 5.30) {
-    try {
-      console.log(`💰 DEBUG: Processando ${investments.length} investimentos com taxa USD/BRL: ${usdBrlRate}`)
-      
-      if (!investments || investments.length === 0) {
-        console.warn('No investments to process')
-        return {
-          stats: {
-            total_invested: 0,
-            current_value: 0,
-            profit_loss: 0,
-            profit_percentage: 0,
-            yield_total: 0,
-            total_positions: 0,
-            last_updated: new Date().toISOString(),
-            usd_brl_rate: usdBrlRate,
-            us_stocks_count: 0
-          },
-          breakdown: {
-            by_ticker: [],
-            by_asset_class: {},
-            top_performers: [],
-            worst_performers: []
-          }
+        // CLUSTERING para agrupamentos e análises
+        if (lowerQuery.includes('agrupe') || lowerQuery.includes('organize') || lowerQuery.includes('diversifica') || lowerQuery.includes('setor')) {
+            return 'CLUSTERING';
         }
-      }
-
-      // ✅ BREAKDOWN DETALHADO POR TICKER COM CONVERSÃO DE MOEDA
-      const processedTickers = investments.map(inv => {
+        // FACT_VERIFICATION para verificações
+        if (lowerQuery.includes('é verdade') || lowerQuery.includes('confirme') || lowerQuery.includes('verifique') || lowerQuery.includes('é correto')) {
+            return 'FACT_VERIFICATION';
+        }
+        // Default: RETRIEVAL_QUERY para busca geral
+        return 'RETRIEVAL_QUERY';
+    }
+    /**
+     * 🔍 DETECTAR TICKER NA QUERY
+     * Identifica se a pergunta é sobre um ativo específico
+     */ detectTickerInQuery(query) {
+        // Padrões para ações brasileiras: ABCD3, ABCD4, ABCD11, etc.
+        const stockPattern = /\b([A-Z]{4}[0-9]{1,2})\b/g;
+        // Padrões para FIIs: ABCD11
+        const fiiPattern = /\b([A-Z]{4}11)\b/g;
+        // Padrões para ações americanas: AAPL, MSFT, etc.
+        const usStockPattern = /\b([A-Z]{1,5})\b/g;
+        // Padrões especiais para Tesouro
+        const treasuryPattern = /tesouro\s+(selic|prefixado|ipca|direto)/gi;
+        const matches = [];
+        // Buscar ações brasileiras
+        let match;
+        while((match = stockPattern.exec(query)) !== null){
+            matches.push(match[1]);
+        }
+        // Buscar FIIs
+        while((match = fiiPattern.exec(query)) !== null){
+            matches.push(match[1]);
+        }
+        // Buscar Tesouro Direto
+        if (treasuryPattern.test(query)) {
+            matches.push('TESOURO SELIC 2026'); // Assumir o mais comum do Erasmo
+        }
+        // Buscar ações por nome popular
+        const popularNames = {
+            'vale': 'VALE3',
+            'petrobras': 'PETR4',
+            'itau': 'ITUB4',
+            'bradesco': 'BBDC4',
+            'banco do brasil': 'BBAS3',
+            'wege': 'WEGE3',
+            'egie': 'EGIE3',
+            'cpfe': 'CPFE3',
+            'flry': 'FLRY3'
+        };
+        const queryLower = query.toLowerCase();
+        for (const [name, ticker] of Object.entries(popularNames)){
+            if (queryLower.includes(name) && !matches.includes(ticker)) {
+                matches.push(ticker);
+            }
+        }
+        return [
+            ...new Set(matches)
+        ]; // Remove duplicatas
+    }
+    /**
+     * 🔍 BUSCA ERASMO-OPTIMIZED
+     * Prioriza Portfolio Snapshot + Busca específica de tickers
+     */ async hybridSearch(queryEmbedding, query, userId) {
         try {
-          // 🇺🇸 DETECTAR AÇÕES AMERICANAS
-          const isUSStock = this.isUSStock(inv.ticker || '')
-          const conversionRate = isUSStock ? usdBrlRate : 1
-          
-          // 💰 VALORES CONVERTIDOS PARA BRL (com proteção contra null/undefined)
-          const currentPriceBRL = (parseFloat(inv.currentPrice || '0') || 0) * conversionRate
-          const averagePriceBRL = (parseFloat(inv.averagePrice || '0') || 0) * conversionRate
-          const currentValueBRL = (parseFloat(inv.currentValue || '0') || 0) * conversionRate
-          const totalInvestedBRL = (parseFloat(inv.totalInvested || '0') || 0) * conversionRate
-          const potentialProfitLossBRL = (parseFloat(inv.potentialProfitLoss || '0') || 0) * conversionRate
-          
-          console.log(`💱 ${inv.ticker} (${isUSStock ? 'US' : 'BR'}): R$ ${currentValueBRL.toFixed(2)} | Rate: ${conversionRate}`)
-          
-          return {
-            ticker: inv.ticker || 'UNKNOWN',
-            is_us_stock: isUSStock,
-            conversion_rate: conversionRate,
-            current_position: parseFloat(inv.currentPosition || '0') || 0,
-            average_price: averagePriceBRL,
-            total_invested: totalInvestedBRL,
-            current_price: currentPriceBRL,
-            current_value: currentValueBRL,
-            profit_loss: potentialProfitLossBRL,
-            profit_loss_pct: parseFloat(inv.potentialProfitLossPct || '0') || 0,
-            total_dividends: (parseFloat(inv.totalDividends || '0') || 0) * conversionRate,
-            total_juros: (parseFloat(inv.totalJuros || '0') || 0) * conversionRate,
-            asset_class: this.classifyAsset(inv.ticker || ''),
-            transactions_count: inv.investments?.length || 0
-          }
-        } catch (tickerError) {
-          console.error(`Error processing ticker ${inv.ticker}:`, tickerError)
-          return {
-            ticker: inv.ticker || 'ERROR',
-            is_us_stock: false,
-            conversion_rate: 1,
-            current_position: 0,
-            average_price: 0,
-            total_invested: 0,
-            current_price: 0,
-            current_value: 0,
-            profit_loss: 0,
-            profit_loss_pct: 0,
-            total_dividends: 0,
-            total_juros: 0,
-            asset_class: 'Erro',
-            transactions_count: 0
-          }
+            console.log('🔍 Starting Erasmo-optimized search...');
+            // 1. SEMPRE buscar portfolio snapshot (fonte oficial)
+            const { data: portfolioSnapshot } = await this.supabase.from('portfolio_snapshots').select('snapshot_data').eq('user_id', userId).order('created_at', {
+                ascending: false
+            }).limit(1).single();
+            console.log('📊 Portfolio snapshot found:', !!portfolioSnapshot);
+            // 2. Detectar tickers específicos na query
+            const detectedTickers = this.detectTickerInQuery(query);
+            console.log('🎯 Detected tickers:', detectedTickers);
+            // 3. Buscar dados específicos dos tickers detectados
+            const tickerData = {};
+            for (const ticker of detectedTickers){
+                console.log(`🔍 Searching complete data for ${ticker}...`);
+                const { data: tickerTransactions } = await this.supabase.from('investments').select('*').eq('user_id', userId).eq('ticker', ticker).order('date', {
+                    ascending: false
+                });
+                if (tickerTransactions?.length > 0) {
+                    tickerData[ticker] = {
+                        transactions: tickerTransactions,
+                        total_transactions: tickerTransactions.length,
+                        latest_date: tickerTransactions[0].date,
+                        total_compras: tickerTransactions.reduce((sum, t)=>sum + parseFloat(t.compra || 0), 0),
+                        total_vendas: tickerTransactions.reduce((sum, t)=>sum + parseFloat(t.venda || 0), 0),
+                        total_dividendos: tickerTransactions.reduce((sum, t)=>sum + parseFloat(t.dividendos || 0), 0),
+                        total_juros: tickerTransactions.reduce((sum, t)=>sum + parseFloat(t.juros || 0), 0)
+                    };
+                    console.log(`✅ ${ticker}: ${tickerTransactions.length} transactions found`);
+                } else {
+                    console.log(`⚠️ ${ticker}: No transactions found`);
+                }
+            }
+            // 4. Buscar contexto geral (transações recentes para visão geral)
+            const { data: recentTransactions } = await this.supabase.from('investments').select('ticker, date, compra, venda, valor_unit, dividendos, juros, observacoes').eq('user_id', userId).order('date', {
+                ascending: false
+            }).limit(100); // Mais transações para melhor contexto
+            console.log('📋 Recent transactions found:', recentTransactions?.length || 0);
+            return {
+                portfolio_snapshot: portfolioSnapshot?.snapshot_data || null,
+                detected_tickers: detectedTickers,
+                ticker_specific_data: tickerData,
+                recent_transactions: recentTransactions || [],
+                task_type_used: this.getOptimalTaskType(query),
+                search_strategy: detectedTickers.length > 0 ? 'TICKER_SPECIFIC' : 'GENERAL_PORTFOLIO'
+            };
+        } catch (error) {
+            console.error('❌ Search error:', error);
+            return {
+                portfolio_snapshot: null,
+                detected_tickers: [],
+                ticker_specific_data: {},
+                recent_transactions: [],
+                task_type_used: 'RETRIEVAL_QUERY',
+                search_strategy: 'ERROR_FALLBACK'
+            };
         }
-      })
+    }
+    /**
+     * 📊 CONSTRUIR CONTEXTO ERASMO-PERFECT
+     * Dados precisos, organizados e completos
+     */ buildErasmoContext(context, request) {
+        const sections = [];
+        console.log('🔍 Building Erasmo-perfect context...');
+        console.log('  - Portfolio snapshot:', !!context.portfolio_snapshot);
+        console.log('  - Detected tickers:', context.detected_tickers);
+        console.log('  - Search strategy:', context.search_strategy);
+        // SEÇÃO 1: PORTFOLIO SNAPSHOT (FONTE OFICIAL)
+        if (context.portfolio_snapshot) {
+            const stats = context.portfolio_snapshot.portfolio_stats || {};
+            const breakdown = context.portfolio_snapshot.portfolio_breakdown || {};
+            sections.push(`## 📊 PORTFOLIO ATUAL DO ERASMO - DADOS OFICIAIS CALCULADOS
 
-      // ✅ AGRUPAMENTO POR CLASSE DE ATIVO
-      const assetClassGroups = this.groupByAssetClass(processedTickers)
+💰 **RESUMO EXECUTIVO:**
+• Valor Total Atual: R$ ${(stats.total_value_brl || 0).toLocaleString('pt-BR', {
+                minimumFractionDigits: 2
+            })}
+• Total Investido: R$ ${(stats.totalInvested || 0).toLocaleString('pt-BR', {
+                minimumFractionDigits: 2
+            })}
+• Lucro/Prejuízo: R$ ${(stats.profitLoss || 0).toLocaleString('pt-BR', {
+                minimumFractionDigits: 2
+            })} (${(stats.profitPct || 0).toFixed(2)}%)
+• Total em Dividendos: R$ ${(stats.yieldTotal || 0).toLocaleString('pt-BR', {
+                minimumFractionDigits: 2
+            })}
+• Número de Ativos: ${breakdown.by_ticker?.length || 0}
+• Taxa USD/BRL: ${context.portfolio_snapshot.currency_info?.usd_brl_rate || 'N/A'}
+• Última Atualização: ${stats.last_updated || 'N/A'}
 
-      // ✅ TOP E WORST PERFORMERS
-      const topPerformers = processedTickers
-        .filter(inv => inv.profit_loss_pct > 0)
-        .sort((a, b) => b.profit_loss_pct - a.profit_loss_pct)
-        .slice(0, 5)
-        .map(inv => ({
-          ticker: inv.ticker,
-          profit_pct: inv.profit_loss_pct,
-          profit_value: inv.profit_loss,
-          is_us_stock: inv.is_us_stock
-        }))
+📋 **TODAS AS POSIÇÕES ATUAIS:**
+${breakdown.by_ticker?.map((asset)=>{
+                const profit_indicator = (asset.potentialProfitLossPct || 0) >= 0 ? '📈' : '📉';
+                return `${profit_indicator} ${asset.ticker}: ${asset.currentPosition} ações/cotas
+   💰 Valor: R$ ${(asset.currentValue || 0).toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2
+                })}
+   📊 P&L: R$ ${(asset.potentialProfitLoss || 0).toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2
+                })} (${(asset.potentialProfitLossPct || 0).toFixed(2)}%)
+   💎 Dividendos: R$ ${(asset.totalDividends || 0).toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2
+                })}`;
+            }).join('\n\n') || 'Nenhuma posição encontrada'}
 
-      const worstPerformers = processedTickers
-        .filter(inv => inv.profit_loss_pct < 0)
-        .sort((a, b) => a.profit_loss_pct - b.profit_loss_pct)
-        .slice(0, 5)
-        .map(inv => ({
-          ticker: inv.ticker,
-          profit_pct: inv.profit_loss_pct,
-          profit_value: inv.profit_loss,
-          is_us_stock: inv.is_us_stock
-        }))
-
-      // ✅ ESTATÍSTICAS CONSOLIDADAS
-      const totalInvested = processedTickers.reduce((sum, inv) => sum + inv.total_invested, 0)
-      const currentValue = processedTickers.reduce((sum, inv) => sum + inv.current_value, 0)
-      const profitLoss = processedTickers.reduce((sum, inv) => sum + inv.profit_loss, 0)
-      const yieldTotal = processedTickers.reduce((sum, inv) => sum + inv.total_dividends + inv.total_juros, 0)
-      const usStocksCount = processedTickers.filter(inv => inv.is_us_stock).length
-
-      const stats = {
-        total_invested: totalInvested,
-        current_value: currentValue,
-        profit_loss: profitLoss,
-        profit_percentage: totalInvested > 0 ? (profitLoss / totalInvested * 100) : 0,
-        yield_total: yieldTotal,
-        total_positions: processedTickers.length,
-        last_updated: new Date().toISOString(),
-        usd_brl_rate: usdBrlRate,
-        us_stocks_count: usStocksCount
-      }
-
-      const breakdown = {
-        by_ticker: processedTickers,
-        by_asset_class: assetClassGroups,
-        top_performers: topPerformers,
-        worst_performers: worstPerformers
-      }
-
-      console.log(`✅ PORTFOLIO PROCESSADO: Total: R$ ${currentValue.toFixed(2)} | P&L: R$ ${profitLoss.toFixed(2)} (${stats.profit_percentage.toFixed(2)}%)`)
-
-      return { stats, breakdown }
-    } catch (error) {
-      console.error('Error processing portfolio data:', error)
-      return {
-        stats: {
-          total_invested: 0,
-          current_value: 0,
-          profit_loss: 0,
-          profit_percentage: 0,
-          yield_total: 0,
-          total_positions: 0,
-          last_updated: new Date().toISOString(),
-          usd_brl_rate: usdBrlRate,
-          us_stocks_count: 0,
-          error: 'Processing failed'
-        },
-        breakdown: {
-          by_ticker: [],
-          by_asset_class: {},
-          top_performers: [],
-          worst_performers: []
+📊 **DISTRIBUIÇÃO POR CLASSE DE ATIVO:**
+${Object.entries(breakdown.by_asset_class || {}).map(([classe, dados])=>`• ${classe}: R$ ${(dados.total_value || 0).toLocaleString('pt-BR', {
+                minimumFractionDigits: 2
+            })} (${(dados.percentage || 0).toFixed(1)}%) - ${dados.positions_count} posições`).join('\n') || 'Sem dados de classificação'}`);
+        } else {
+            sections.push(`## ⚠️ PORTFOLIO DO ERASMO
+❌ Snapshot não disponível - Execute o snapshot calculator primeiro para obter dados atualizados`);
         }
-      }
-    }
-  }
+        // SEÇÃO 2: ANÁLISE ESPECÍFICA DE TICKERS (se detectados)
+        if (context.detected_tickers.length > 0) {
+            for (const ticker of context.detected_tickers){
+                const tickerData = context.ticker_specific_data[ticker];
+                const snapshotAsset = context.portfolio_snapshot?.portfolio_breakdown?.by_ticker?.find((a)=>a.ticker === ticker);
+                sections.push(`## 🎯 ANÁLISE ESPECÍFICA - ${ticker}
 
-  /**
-   * 🇺🇸 DETECTAR AÇÕES AMERICANAS
-   */
-  private isUSStock(ticker: string): boolean {
-    if (!ticker || typeof ticker !== 'string') return false
-    
-    // Padrões brasileiros (se tem estes padrões, NÃO é americano)
-    const brPatterns = [
-      /[34]$/, // Ações brasileiras terminam em 3 ou 4
-      /11$/, // FIIs brasileiros terminam em 11
-      /^TESOURO/i, // Tesouro Direto
-    ]
+${snapshotAsset ? `
+📊 **POSIÇÃO ATUAL (SNAPSHOT OFICIAL):**
+• Quantidade Total: ${snapshotAsset.currentPosition} ações/cotas
+• Preço Médio: R$ ${(snapshotAsset.averagePrice || 0).toFixed(2)}
+• Preço Atual: R$ ${(snapshotAsset.currentPrice || 0).toFixed(2)}
+• Valor Investido: R$ ${(snapshotAsset.totalInvested || 0).toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2
+                })}
+• Valor Atual: R$ ${(snapshotAsset.currentValue || 0).toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2
+                })}
+• Lucro/Prejuízo: R$ ${(snapshotAsset.potentialProfitLoss || 0).toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2
+                })} (${(snapshotAsset.potentialProfitLossPct || 0).toFixed(2)}%)
+• Total Dividendos: R$ ${(snapshotAsset.totalDividends || 0).toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2
+                })}
+• Classe do Ativo: ${snapshotAsset.asset_class || 'N/A'}
+• Moeda: ${snapshotAsset.currency || 'BRL'}
+${snapshotAsset.isInternational ? '🌍 Ativo Internacional (convertido para BRL)' : '🇧🇷 Ativo Brasileiro'}
+` : '⚠️ Ativo não encontrado no portfolio atual'}
 
-    // Se é claramente brasileiro, não é US
-    if (brPatterns.some(pattern => pattern.test(ticker))) {
-      return false
-    }
+${tickerData ? `
+📋 **HISTÓRICO COMPLETO DE TRANSAÇÕES (${tickerData.total_transactions} operações):**
+• Total Compras: ${tickerData.total_compras.toLocaleString('pt-BR')} ações/cotas
+• Total Vendas: ${tickerData.total_vendas.toLocaleString('pt-BR')} ações/cotas
+• Total Dividendos: R$ ${tickerData.total_dividendos.toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2
+                })}
+• Total Juros: R$ ${tickerData.total_juros.toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2
+                })}
+• Última Transação: ${tickerData.latest_date}
 
-    // Padrões americanos
-    const usPatterns = [
-      /^[A-Z]{1,5}$/, // AAPL, TSLA, NVDA, GOOGL, etc
-    ]
-
-    // Se segue padrão americano E não é brasileiro, é US
-    return usPatterns.some(pattern => pattern.test(ticker))
-  }
-
-  private classifyAsset(ticker: string): string {
-    if (!ticker || typeof ticker !== 'string') return 'Outros'
-    
-    if (ticker.match(/^TESOURO/i)) return 'Tesouro Direto'
-    if (ticker.match(/11$/)) return 'FII'
-    if (ticker.match(/[34]$/)) return 'Ação BR'
-    if (this.isUSStock(ticker)) return 'Ação US'
-    return 'Outros'
-  }
-
-  private groupByAssetClass(processedTickers: any[]) {
-    try {
-      const groups = processedTickers.reduce((acc, inv) => {
-        const assetClass = inv.asset_class
-        
-        if (!acc[assetClass]) {
-          acc[assetClass] = {
-            total_invested: 0,
-            current_value: 0,
-            profit_loss: 0,
-            count: 0,
-            tickers: []
-          }
+**ÚLTIMAS 10 TRANSAÇÕES:**
+${tickerData.transactions.slice(0, 10).map((t)=>{
+                    const tipo = t.compra > 0 ? '🟢 COMPRA' : t.venda > 0 ? '🔴 VENDA' : t.dividendos > 0 ? '💰 DIVIDENDO' : '💸 JUROS';
+                    const qtd = t.compra || t.venda || t.dividendos || t.juros || 0;
+                    const valor = t.valor_unit ? `@ R$ ${parseFloat(t.valor_unit).toFixed(2)}` : '';
+                    return `  ${t.date}: ${tipo} ${qtd} ${valor} - ${t.observacoes || ''}`;
+                }).join('\n')}
+${tickerData.transactions.length > 10 ? `\n... e mais ${tickerData.transactions.length - 10} transações históricas` : ''}
+` : '⚠️ Nenhuma transação encontrada para este ticker'}`);
+            }
         }
-        
-        acc[assetClass].total_invested += inv.total_invested
-        acc[assetClass].current_value += inv.current_value
-        acc[assetClass].profit_loss += inv.profit_loss
-        acc[assetClass].count += 1
-        acc[assetClass].tickers.push(inv.ticker)
-        
-        return acc
-      }, {} as Record<string, any>)
+        // SEÇÃO 3: CONTEXTO DA CONSULTA
+        const queryLower = request.query.toLowerCase();
+        sections.push(`## 🔍 CONTEXTO DA CONSULTA
 
-      // Calcular percentuais
-      Object.keys(groups).forEach(assetClass => {
-        const group = groups[assetClass]
-        group.profit_percentage = group.total_invested > 0 
-          ? (group.profit_loss / group.total_invested * 100) 
-          : 0
-      })
+📝 **Pergunta:** "${request.query}"
+🎯 **Estratégia de Busca:** ${context.search_strategy}
+🤖 **Task Type:** ${context.task_type_used}
+${context.detected_tickers.length > 0 ? `🏷️ **Tickers Detectados:** ${context.detected_tickers.join(', ')}` : '📊 **Tipo:** Consulta geral sobre portfolio'}
 
-      return groups
-    } catch (error) {
-      console.error('Error grouping by asset class:', error)
-      return {}
+💡 **FONTE PRIORITÁRIA:** Portfolio Snapshot Calculator (dados oficiais calculados)
+📊 **Dados Disponíveis:** ${context.portfolio_snapshot ? 'Snapshot Atualizado' : 'Apenas Transações RAW'}
+👤 **Usuário:** Erasmo Russo (ID: ${this.ERASMO_USER_ID})
+🕒 **Processado em:** ${new Date().toLocaleString('pt-BR')}`);
+        // SEÇÃO 4: INSTRUÇÕES ESPECÍFICAS PARA A IA
+        sections.push(`## 🧠 INSTRUÇÕES PARA RESPOSTA
+
+1. **SEMPRE USE OS DADOS DO SNAPSHOT como fonte principal** - São os cálculos oficiais e atualizados
+2. **Para tickers específicos, combine snapshot + histórico de transações**
+3. **Seja preciso com números** - Use vírgula para decimais (padrão brasileiro)
+4. **Contextualize respostas** - Explique o que os números significam
+5. **Sugira ações práticas** - O que o Erasmo pode fazer com essas informações
+6. **Se não tiver dados específicos, seja honesto** - Não invente números
+7. **Trate TESOURO DIRETO adequadamente** - É título público, não ação
+8. **Considere aspectos tributários** - Importante para decisões de investimento`);
+        const finalContext = sections.join('\n\n');
+        console.log('📋 Context length:', finalContext.length);
+        return finalContext;
     }
-  }
-
-  private async getMarketData() {
-    try {
-      const { data } = await this.supabase
-        .from('market_data_cache')
-        .select('*')
-        .gte('timestamp', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-        .order('timestamp', { ascending: false })
-        .limit(5)
-      return data || []
-    } catch (error) {
-      console.warn('Market data not available:', error)
-      return []
-    }
-  }
-
-  /**
-   * 💬 RESPOSTA INTELIGENTE PRINCIPAL
-   * Sistema: Contextual + RAG + Tempo Real
-   */
-  async answerQuery(request: CognitiveRequest): Promise<{
-    response: string
-    confidence: number
-    sources: string[]
-    suggestions: string[]
-    used_thinking?: boolean
-  }> {
-    try {
-      // ✅ PROCESSAR DIFERENTES FORMATOS DE INPUT
-      let query: string
-      let userId: string
-
-      if (request.action) {
-        // Formato: { action: "explain_chart", payload: {...}, userId: "..." }
-        userId = request.userId || request.user_id || ''
-        
-        switch (request.action) {
-          case 'explain_chart':
-            query = `Analise e explique os dados do gráfico de investimentos. ${request.payload ? `Dados adicionais: ${JSON.stringify(request.payload)}` : ''}`
-            break
-          default:
-            query = `Processando ação: ${request.action}`
-        }
-      } else {
-        // Formato tradicional: { query: "...", user_id: "..." }
-        query = request.query || ''
-        userId = request.user_id || ''
-      }
-
-      // Validação de entrada
-      if (!query || !userId) {
-        throw new Error('Missing required fields: query/action and user_id/userId')
-      }
-
-      // 1. Gerar embedding da query (com fallback)
-      const queryEmbedding = await this.embeddings.embed(query, "RETRIEVAL_QUERY")
-
-      // 2. Busca híbrida avançada
-      const context = await this.hybridSearch(queryEmbedding, query, '4362da88-d01c-4ffe-a447-75751ea8e182')
-
-      // 3. Construir contexto enriquecido
-      const enrichedContext = this.buildEnrichedContext(context, request)
-
-      // 4. Determinar se precisa de análise profunda (thinking model)
-      const requiresDeepAnalysis = this.shouldUseThinking(query, context)
-      
-      // 5. Síntese com Qwen3-235B (normal ou thinking)
-      const messages: QwenMessage[] = [
-        {
-          role: 'system',
-          content: `# ERASMO INVEST - CONSULTOR FINANCEIRO IA SÊNIOR
+    /**
+     * 💬 RESPOSTA INTELIGENTE PRINCIPAL
+     * Sistema otimizado especificamente para o Erasmo
+     */ async answerQuery(request) {
+        console.log('🚀 Cognitive Core: Starting Erasmo-optimized processing...');
+        console.log('📝 Query:', request.query);
+        console.log('👤 User ID:', request.user_id);
+        try {
+            // 1. Verificar se é o usuário correto (Erasmo)
+            if (request.user_id !== this.ERASMO_USER_ID) {
+                console.log('⚠️ Warning: Different user ID detected');
+            }
+            // 2. Determinar task type otimizado
+            const optimalTaskType = this.getOptimalTaskType(request.query);
+            console.log('🎯 Task type:', optimalTaskType);
+            // 3. Gerar embedding da query
+            console.log('🔍 Generating embedding...');
+            const queryEmbedding = await this.embeddings.embed(request.query, optimalTaskType);
+            console.log('✅ Embedding generated successfully');
+            // 4. Busca Erasmo-optimized
+            console.log('📊 Executing Erasmo-optimized search...');
+            const context = await this.hybridSearch(queryEmbedding, request.query, request.user_id);
+            console.log('✅ Search completed');
+            // 5. Construir contexto perfeito
+            console.log('📋 Building perfect context...');
+            const enrichedContext = this.buildErasmoContext(context, request);
+            console.log('✅ Context built successfully');
+            // 6. Determinar se precisa de análise profunda
+            const requiresDeepAnalysis = this.shouldUseThinking(request.query, context);
+            console.log('🧠 Deep analysis required:', requiresDeepAnalysis);
+            // 7. Criar prompt especializado para o Erasmo
+            const messages = [
+                {
+                    role: 'system',
+                    content: `# ERASMO INVEST - CONSULTOR FINANCEIRO IA SÊNIOR
 
 ## IDENTIDADE
-Você é Erasmo, um consultor financeiro brasileiro expert com 20+ anos de experiência em:
-- Mercado de ações brasileiro (B3)
-- Fundos imobiliários (FIIs)
-- Tesouro Direto
-- Renda fixa e variável
-- Análise técnica e fundamentalista
+Você é o assistente financeiro pessoal do **Erasmo Russo**, investidor brasileiro experiente.
+Erasmo possui um portfolio diversificado em ações, FIIs, Tesouro Direto e ativos internacionais.
+
+## PERFIL DO ERASMO
+• **Nome:** Erasmo Russo
+• **Email:** erasmorusso@uol.com.br  
+• **Senha:** ${this.ERASMO_PASSWORD}
+• **User ID:** ${this.ERASMO_USER_ID}
+• **Expertise:** Investidor ativo com foco em value investing e dividendos
+• **Preferências:** Análises práticas, números precisos, sugestões acionáveis
 
 ## CONTEXTO ATUAL
-Data: ${new Date().toLocaleDateString('pt-BR')}
-Horário: ${new Date().toLocaleTimeString('pt-BR')}
-
-## MODO DE ANÁLISE
-${requiresDeepAnalysis ? '🧠 MODO THINKING ATIVO - Análise profunda habilitada' : '⚡ MODO RÁPIDO - Resposta direta'}
+📅 **Data:** ${new Date().toLocaleDateString('pt-BR')}
+🕒 **Horário:** ${new Date().toLocaleTimeString('pt-BR')}
+${requiresDeepAnalysis ? '🧠 **Modo:** ANÁLISE PROFUNDA ATIVADA' : '⚡ **Modo:** RESPOSTA RÁPIDA E PRECISA'}
 
 ## INSTRUÇÕES CRÍTICAS
-1. SEMPRE cite fontes específicas dos dados fornecidos
-2. Use linguagem brasileira natural e acessível
-3. Seja preciso com números, datas e percentuais
-4. Inclua disclaimers quando apropriado
-5. Sugira próximos passos práticos
-6. Contextualize com cenário macroeconômico atual
+1. **SEMPRE use dados do Portfolio Snapshot** - São os cálculos oficiais e atualizados
+2. **Seja preciso com números** - Use padrão brasileiro (vírgula para decimal, ponto para milhares)
+3. **Contextualize tudo** - Explique o que os números significam para as decisões
+4. **Sugira ações práticas** - O que o Erasmo pode fazer com essas informações
+5. **Trate cada classe de ativo adequadamente:**
+   - Ações brasileiras: Análise fundamentalista + dividendos
+   - FIIs: Foco em yield e vacância
+   - Tesouro Direto: Taxas e prazo de vencimento
+   - Ações internacionais: Câmbio + performance em USD
+6. **Se pergunta específica sobre ticker, use dados do snapshot + histórico completo**
+7. **Seja honesto sobre limitações** - Se não tiver dados, diga claramente
+8. **Mantenha tom profissional mas acessível** - Erasmo valoriza expertise sem pedantismo
+
 ${requiresDeepAnalysis ? `
-7. 🧠 RACIOCÍNIO PROFUNDO: Pense passo a passo, considere múltiplas variáveis
-8. 🔍 ANÁLISE MULTIDIMENSIONAL: Avalie riscos, oportunidades, cenários
-9. 📊 FUNDAMENTAÇÃO TÉCNICA: Base suas conclusões em dados sólidos` : ''}
+## 🧠 MODO ANÁLISE PROFUNDA
+• Pense passo a passo sobre a pergunta
+• Considere múltiplas variáveis e cenários
+• Analise riscos e oportunidades
+• Fundamente conclusões em dados sólidos
+• Considere contexto macroeconômico
+• Sugira estratégias específicas` : ''}
 
 ## DADOS DISPONÍVEIS
 ${enrichedContext}`
-        },
-        ...(request.conversation_history || []),
-        {
-          role: 'user',
-          content: query
+                },
+                ...request.conversation_history || [],
+                {
+                    role: 'user',
+                    content: request.query
+                }
+            ];
+            // 8. Gerar resposta
+            console.log('🤖 Generating response...');
+            const completion = requiresDeepAnalysis ? await this.qwen.deepAnalysis(messages, this.getAnalysisType(request.query)) : await this.qwen.complete(messages, {
+                temperature: 0.75,
+                max_tokens: 3500
+            });
+            const response = completion.choices[0].message.content;
+            console.log('✅ Response generated successfully');
+            // 9. Análise de qualidade
+            const analysis = await this.analyzeResponse(response, context);
+            // 10. Salvar interação (opcional)
+            try {
+                await this.saveInteraction(request, response, analysis);
+            } catch (saveError) {
+                console.warn('⚠️ Could not save interaction:', saveError.message);
+            }
+            console.log('🎉 Query processing completed successfully');
+            return {
+                response,
+                confidence: analysis.confidence,
+                sources: analysis.sources,
+                suggestions: analysis.suggestions,
+                used_thinking: requiresDeepAnalysis,
+                task_type: optimalTaskType,
+                embedding_model: 'gemini-embedding-001',
+                context_available: {
+                    portfolio_snapshot: !!context.portfolio_snapshot,
+                    detected_tickers: context.detected_tickers.length,
+                    ticker_data_available: Object.keys(context.ticker_specific_data).length,
+                    search_strategy: context.search_strategy
+                }
+            };
+        } catch (error) {
+            console.error('❌ Cognitive Core Error:', error);
+            // Resposta de fallback inteligente
+            let fallbackResponse = "Desculpe, Erasmo. Ocorreu um erro interno ao processar sua consulta. ";
+            if (error.message.includes('Gemini')) {
+                fallbackResponse += "Problema com o sistema de embeddings. ";
+            } else if (error.message.includes('Qwen')) {
+                fallbackResponse += "Problema com o modelo de linguagem. ";
+            } else if (error.message.includes('supabase')) {
+                fallbackResponse += "Problema ao acessar os dados do seu portfolio. ";
+            }
+            fallbackResponse += "Tente novamente em alguns instantes ou reformule sua pergunta. Se persistir, verifique se o snapshot do portfolio está atualizado.";
+            return {
+                response: fallbackResponse,
+                confidence: 0,
+                sources: [
+                    "Sistema de Fallback"
+                ],
+                suggestions: [
+                    "Tente reformular sua pergunta",
+                    "Execute o snapshot calculator se necessário",
+                    "Verifique sua conexão",
+                    "Contate o suporte técnico"
+                ],
+                used_thinking: false,
+                error: error.message,
+                context_available: {
+                    portfolio_snapshot: false,
+                    detected_tickers: 0,
+                    ticker_data_available: 0,
+                    search_strategy: 'ERROR_FALLBACK'
+                }
+            };
         }
-      ]
-
-      const completion = requiresDeepAnalysis 
-        ? await this.qwen.deepAnalysis(messages, this.getAnalysisType(query))
-        : await this.qwen.complete(messages, {
-            temperature: 0.75,
-            max_tokens: 3000
-          })
-
-      const response = completion.choices?.[0]?.message?.content || "Desculpe, não consegui processar sua solicitação no momento."
-
-      // 5. Análise de confiança e extração de fontes
-      const analysis = await this.analyzeResponse(response, context)
-
-      // 6. Salvar interação para aprendizado
-      await this.saveInteraction(request, response, analysis)
-
-      return {
-        response,
-        confidence: analysis.confidence,
-        sources: analysis.sources,
-        suggestions: analysis.suggestions,
-        used_thinking: requiresDeepAnalysis
-      }
-
-    } catch (error) {
-      console.error('Cognitive Core Error:', error)
-      return {
-        response: "Desculpe, ocorreu um erro interno. Por favor, tente novamente em alguns instantes. Se o problema persistir, entre em contato com o suporte.",
-        confidence: 0,
-        sources: [],
-        suggestions: ["Tente reformular sua pergunta", "Verifique sua conexão", "Contate o suporte se o problema persistir"],
-        used_thinking: false
-      }
     }
-  }
-
-  /**
-   * 🧠 DETERMINAR SE PRECISA THINKING MODEL - VERSÃO AVANÇADA
-   */
-  private shouldUseThinking(query: string, context: any): boolean {
-    const complexAnalysisKeywords = [
-      'análise', 'analise', 'avalie', 'compare', 'estratégia', 'recomende',
-      'otimize', 'diversifique', 'risco', 'cenário', 'projeção',
-      'performance', 'rentabilidade', 'volatilidade', 'correlação',
-      'rebalancear', 'alocar', 'timing', 'múltiplos', 'valuation',
-      'explain_chart', 'explicar', 'detalhado', 'profundo'
-    ]
-
-    const portfolioAnalysisKeywords = [
-      'carteira', 'portfolio', 'posições', 'alocação', 'diversificação'
-    ]
-
-    const marketAnalysisKeywords = [
-      'mercado', 'economia', 'macro', 'cenário', 'tendência'
-    ]
-
-    const hasComplexKeywords = complexAnalysisKeywords.some(keyword => 
-      query.toLowerCase().includes(keyword)
-    )
-    
-    const hasPortfolioAnalysis = portfolioAnalysisKeywords.some(keyword =>
-      query.toLowerCase().includes(keyword)
-    )
-    
-    const hasMarketAnalysis = marketAnalysisKeywords.some(keyword =>
-      query.toLowerCase().includes(keyword)
-    ) && query.length > 30
-
-    const hasLargePortfolio = context.user_context?.portfolio_stats?.total_positions > 10
-    const hasHighValue = context.user_context?.portfolio_stats?.current_value > 100000
-    const isChartExplanation = query.includes('gráfico') || query.includes('chart')
-    const isLongQuery = query.length > 80
-
-    const shouldUse = (
-      (hasPortfolioAnalysis && hasLargePortfolio) ||
-      (hasMarketAnalysis && isLongQuery) ||
-      isChartExplanation ||
-      (hasComplexKeywords && hasHighValue) ||
-      (isLongQuery && hasComplexKeywords)
-    )
-
-    console.log(`🧠 Thinking decision: ${shouldUse} | Keywords: ${hasComplexKeywords} | Portfolio: ${hasPortfolioAnalysis} | Chart: ${isChartExplanation} | Long: ${isLongQuery}`)
-    
-    return shouldUse
-  }
-
-  private getAnalysisType(query: string): 'portfolio' | 'market' | 'risk' | 'strategy' {
-    if (query.includes('carteira') || query.includes('portfolio')) return 'portfolio'
-    if (query.includes('risco') || query.includes('volatil')) return 'risk'
-    if (query.includes('estratégia') || query.includes('recomend')) return 'strategy'
-    return 'market'
-  }
-
-  /**
-   * 📊 CONSTRUIR CONTEXTO ENRIQUECIDO COM DADOS PROFISSIONAIS
-   */
-  private buildEnrichedContext(context: any, request: CognitiveRequest): string {
-    const sections = []
-
-    // ✅ OVERVIEW COMPLETO DO PORTFÓLIO (DADOS REAIS DO SISTEMA SQL COM CONVERSÃO USD)
-    if (context.user_context?.portfolio_stats) {
-      const stats = context.user_context.portfolio_stats
-      const usdRate = context.user_context.usd_brl_rate || 5.30
-      
-      sections.push(`## 📊 VISÃO GERAL DO PORTFÓLIO (DADOS OFICIAIS + CONVERSÃO USD/BRL)
-**Valor Total Investido**: R$ ${stats.total_invested.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
-**Valor Atual**: R$ ${stats.current_value.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
-**Lucro/Prejuízo**: R$ ${stats.profit_loss.toLocaleString('pt-BR', {minimumFractionDigits: 2})} (${stats.profit_percentage.toFixed(2)}%)
-**Dividendos/Juros Recebidos**: R$ ${stats.yield_total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
-**Total de Posições**: ${stats.total_positions} (${stats.us_stocks_count || 0} ações US)
-**Taxa USD/BRL**: ${usdRate.toFixed(4)}
-**Última Atualização**: ${new Date(stats.last_updated).toLocaleString('pt-BR')}`)
+    /**
+     * 🧠 DETERMINAR SE PRECISA THINKING MODEL
+     */ shouldUseThinking(query, context) {
+        const complexKeywords = [
+            'análise',
+            'avalie',
+            'compare',
+            'estratégia',
+            'recomende',
+            'otimize',
+            'diversifique',
+            'risco',
+            'cenário',
+            'projeção',
+            'performance',
+            'rentabilidade',
+            'volatilidade',
+            'correlação',
+            'rebalancear',
+            'alocar',
+            'timing',
+            'múltiplos',
+            'valuation',
+            'como está'
+        ];
+        const hasComplexKeywords = complexKeywords.some((keyword)=>query.toLowerCase().includes(keyword));
+        const portfolioAnalysis = query.includes('carteira') || query.includes('portfolio');
+        const longQuery = query.length > 100;
+        const hasPortfolioData = context.portfolio_snapshot && Object.keys(context.ticker_specific_data || {}).length > 0;
+        return portfolioAnalysis && hasPortfolioData || hasComplexKeywords && longQuery || query.toLowerCase().includes('como está');
     }
-
-    // ✅ BREAKDOWN POR CLASSE DE ATIVO
-    if (context.user_context?.portfolio_breakdown?.by_asset_class) {
-      const assetClasses = context.user_context.portfolio_breakdown.by_asset_class
-      
-      sections.push(`## 🏛️ DIVERSIFICAÇÃO POR CLASSE DE ATIVO
-${Object.entries(assetClasses).map(([assetClass, data]: [string, any]) => 
-  `**${assetClass}**: ${data.count} posições | R$ ${data.current_value.toLocaleString('pt-BR')} | ${data.profit_percentage.toFixed(2)}%`
-).join('\n')}`)
+    /**
+     * 🎯 DETERMINAR TIPO DE ANÁLISE
+     */ getAnalysisType(query) {
+        if (query.includes('carteira') || query.includes('portfolio')) return 'portfolio';
+        if (query.includes('risco') || query.includes('volatil')) return 'risk';
+        if (query.includes('estratégia') || query.includes('recomend')) return 'strategy';
+        if (query.includes('compare') || query.includes('vs')) return 'comparison';
+        return 'general';
     }
-
-    // ✅ TOP 5 MELHORES E PIORES PERFORMANCES
-    if (context.user_context?.portfolio_breakdown) {
-      const { top_performers, worst_performers } = context.user_context.portfolio_breakdown
-      
-      if (top_performers?.length > 0) {
-        sections.push(`## 🚀 TOP 5 MELHORES PERFORMANCES
-${top_performers.map((perf: any) => 
-  `- ${perf.ticker}: +${perf.profit_pct.toFixed(2)}% (R$ ${perf.profit_value.toLocaleString('pt-BR')})`
-).join('\n')}`)
-      }
-      
-      if (worst_performers?.length > 0) {
-        sections.push(`## 📉 TOP 5 PIORES PERFORMANCES
-${worst_performers.map((perf: any) => 
-  `- ${perf.ticker}: ${perf.profit_pct.toFixed(2)}% (R$ ${perf.profit_value.toLocaleString('pt-BR')})`
-).join('\n')}`)
-      }
+    /**
+     * 🎯 ANÁLISE DE RESPOSTA
+     */ async analyzeResponse(response, context) {
+        let confidence = 0.7; // Base
+        if (context.portfolio_snapshot) confidence += 0.2;
+        if (Object.keys(context.ticker_specific_data || {}).length > 0) confidence += 0.1;
+        if (context.search_strategy === 'TICKER_SPECIFIC') confidence += 0.05;
+        const sources = [
+            ...new Set([
+                'Portfolio Snapshot Calculator',
+                'Tabela investments (dados históricos)',
+                ...context.detected_tickers.length > 0 ? [
+                    'Análise específica de tickers'
+                ] : [],
+                'Sistema Cognitive Core Erasmo-Optimized'
+            ])
+        ];
+        const suggestions = [
+            "Atualizar snapshot do portfolio",
+            "Analisar performance por setor",
+            "Verificar rebalanceamento necessário",
+            "Revisar estratégia de dividendos",
+            "Considerar aspectos tributários"
+        ];
+        return {
+            confidence: Math.min(confidence, 1.0),
+            sources,
+            suggestions
+        };
     }
-
-    // ✅ DETALHES DE INVESTIMENTOS ESPECÍFICOS COM IDENTIFICAÇÃO DE MOEDA
-    if (context.user_context?.portfolio_breakdown?.by_ticker?.length > 0) {
-      const topInvestments = context.user_context.portfolio_breakdown.by_ticker
-        .sort((a: any, b: any) => b.current_value - a.current_value)
-        .slice(0, 10)
-      
-      sections.push(`## 💼 TOP 10 MAIORES POSIÇÕES (VALORES EM BRL)
-${topInvestments.map((inv: any) => {
-        const flag = inv.is_us_stock ? '🇺🇸' : '🇧🇷'
-        const rateInfo = inv.is_us_stock ? ` (USD→BRL: ${inv.conversion_rate.toFixed(4)})` : ''
-        return `- ${flag} **${inv.ticker}**: R$ ${inv.current_value.toLocaleString('pt-BR')} | PM: R$ ${inv.average_price.toFixed(2)} | ${inv.profit_loss_pct >= 0 ? '+' : ''}${inv.profit_loss_pct.toFixed(2)}%${rateInfo}`
-      }).join('\n')}`)
+    /**
+     * 💾 SALVAR INTERAÇÃO
+     */ async saveInteraction(request, response, analysis) {
+        try {
+            const { data, error } = await this.supabase.from('cognitive_interactions').insert({
+                user_id: request.user_id,
+                query: request.query,
+                response: response.substring(0, 2000),
+                confidence: analysis.confidence,
+                sources: analysis.sources,
+                metadata: {
+                    task_type: this.getOptimalTaskType(request.query),
+                    response_length: response.length,
+                    has_portfolio_data: !!request.portfolio_snapshot
+                },
+                timestamp: new Date().toISOString()
+            });
+            if (error) {
+                console.warn('⚠️ Could not save interaction:', error.message);
+            } else {
+                console.log('✅ Interaction saved successfully');
+            }
+        } catch (error) {
+            console.warn('⚠️ Failed to save interaction:', error.message);
+        }
     }
-
-    // ✅ DADOS DE MERCADO (se disponível)
-    if (context.market_data?.length > 0) {
-      sections.push(`## 📈 DADOS DE MERCADO RECENTES
-${context.market_data.map((data: any) => 
-  `- ${data.symbol}: R$ ${data.price} (${data.change_percent >= 0 ? '+' : ''}${data.change_percent}%) - ${data.timestamp}`
-).join('\n')}`)
-    }
-
-    // ✅ INFORMAÇÕES SEMÂNTICAS RELEVANTES
-    if (context.semantic_results?.length > 0) {
-      sections.push(`## 🔍 INFORMAÇÕES RELEVANTES ENCONTRADAS
-${context.semantic_results.map((result: any) => 
-  `- ${result.title}: ${result.content} (Relevância: ${(result.similarity * 100 || 0).toFixed(1)}%)`
-).join('\n')}`)
-    }
-
-    return sections.join('\n\n') || "Contexto do portfólio carregado com sucesso."
-  }
-
-  /**
-   * 🎯 ANÁLISE DE RESPOSTA
-   */
-  private async analyzeResponse(response: string, context: any): Promise<{
-    confidence: number
-    sources: string[]
-    suggestions: string[]
-  }> {
-    // Análise simples de confiança baseada em contexto
-    let confidence = 0.7
-
-    if (context.semantic_results?.length > 0) confidence += 0.1
-    if (context.market_data?.length > 0) confidence += 0.1
-    if (context.user_context?.portfolio_stats) confidence += 0.1
-
-    // Extrair fontes mencionadas
-    const sources = [
-      ...new Set([
-        ...(context.semantic_results?.map((r: any) => r.source) || []),
-        ...(context.market_data?.map((m: any) => m.source) || [])
-      ])
-    ].filter(Boolean)
-
-    // Sugestões baseadas no contexto
-    const suggestions = [
-      "Ver análise detalhada do ativo",
-      "Comparar com outros investimentos",
-      "Verificar indicadores técnicos",
-      "Analisar histórico de dividendos"
-    ]
-
-    return { confidence, sources, suggestions }
-  }
-
-  /**
-   * 💾 SALVAR INTERAÇÃO
-   */
-  private async saveInteraction(request: CognitiveRequest | { query: string, user_id: string }, response: string, analysis: any) {
-    try {
-      const userId = 'user_id' in request ? request.user_id : request.userId || ''
-      const query = 'query' in request ? request.query : `Action: ${request.action || 'unknown'}`
-      
-      await this.supabase.from('cognitive_interactions').insert({
-        user_id: userId,
-        query,
-        response,
-        confidence: analysis.confidence,
-        sources: analysis.sources,
-        timestamp: new Date().toISOString()
-      })
-    } catch (error) {
-      console.error('Failed to save interaction:', error)
-    }
-  }
 }
-
 /**
  * 🚀 HANDLER PRINCIPAL
- */
-serve(async (req) => {
-  // CORS Headers
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-      },
-    })
-  }
-
-  if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 })
-  }
-
-  try {
-    const cognitiveCore = new CognitiveCore()
-    const request: CognitiveRequest = await req.json()
-
-    // ✅ VALIDAÇÃO FLEXÍVEL
-    const hasQuery = request.query && request.user_id
-    const hasAction = request.action && (request.userId || request.user_id)
-    
-    if (!hasQuery && !hasAction) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Missing required fields. Use either: {query, user_id} or {action, userId/user_id}' 
-        }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      )
+ */ serve(async (req)=>{
+    console.log('🚀 Cognitive Core: Request received');
+    console.log('📋 Method:', req.method);
+    console.log('🌐 Headers:', Object.fromEntries(req.headers.entries()));
+    // CORS Headers
+    if (req.method === 'OPTIONS') {
+        console.log('✅ CORS preflight request');
+        return new Response(null, {
+            status: 200,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+            }
+        });
     }
-
-    // Usar user_id correto do sistema
-    const fixedUserId = '4362da88-d01c-4ffe-a447-75751ea8e182'
-
-    const result = await cognitiveCore.answerQuery({ ...request, user_id: fixedUserId })
-
-    return new Response(JSON.stringify({
-      success: true,
-      data: result,
-      model: result.used_thinking ? "qwen/qwen3-235b-a22b-thinking-2507" : "qwen/qwen3-235b-a22b-2507:free",
-      cost: "FREE",
-      analysis_mode: result.used_thinking ? "DEEP_THINKING" : "STANDARD",
-      timestamp: new Date().toISOString()
-    }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    })
-
-  } catch (error) {
-    console.error('Cognitive Core Handler Error:', error)
-    return new Response(JSON.stringify({
-      success: false,
-      error: error.message || 'Internal server error',
-      timestamp: new Date().toISOString()
-    }), {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    })
-  }
-})
+    if (req.method !== 'POST') {
+        console.log('❌ Method not allowed:', req.method);
+        return new Response('Method not allowed', {
+            status: 405
+        });
+    }
+    try {
+        console.log('🧠 Initializing Erasmo-Optimized Cognitive Core...');
+        const cognitiveCore = new CognitiveCore();
+        console.log('✅ Cognitive Core initialized');
+        console.log('📝 Parsing request body...');
+        let request;
+        try {
+            const rawBody1 = await req.text();
+            console.log('📄 Raw request body:', rawBody1);
+            request = JSON.parse(rawBody1);
+            console.log('🔍 Parsed request:', JSON.stringify(request, null, 2));
+        } catch (parseError) {
+            console.error('❌ JSON parsing error:', parseError);
+            return new Response(JSON.stringify({
+                error: 'Invalid JSON in request body',
+                raw_body_preview: rawBody?.substring(0, 200)
+            }), {
+                status: 400,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+        }
+        console.log('✅ Request parsed successfully');
+        // Normalizar campos do frontend
+        const query = request.query || request.commandText;
+        const user_id = request.user_id || request.userId;
+        const conversation_history = request.conversation_history || [];
+        console.log('🔄 Normalized fields:');
+        console.log('  - query:', typeof query, query?.substring(0, 50));
+        console.log('  - user_id:', typeof user_id, user_id);
+        // Validação
+        if (!query || typeof query !== 'string' || query.trim() === '') {
+            console.log('❌ Missing or invalid query field');
+            return new Response(JSON.stringify({
+                error: 'Missing or invalid query field',
+                received: {
+                    query: request.query,
+                    commandText: request.commandText
+                }
+            }), {
+                status: 400,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+        }
+        if (!user_id || typeof user_id !== 'string' || user_id.trim() === '') {
+            console.log('❌ Missing or invalid user_id field');
+            return new Response(JSON.stringify({
+                error: 'Missing or invalid user_id field',
+                received: {
+                    user_id: request.user_id,
+                    userId: request.userId
+                }
+            }), {
+                status: 400,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+        }
+        console.log('✅ Validation passed - processing with Erasmo-Optimized Cognitive Core...');
+        // Processar query
+        const normalizedRequest = {
+            query: query.trim(),
+            user_id: user_id.trim(),
+            conversation_history
+        };
+        const result = await cognitiveCore.answerQuery(normalizedRequest);
+        console.log('✅ Query processed successfully');
+        const response = {
+            success: true,
+            data: result,
+            model: result.used_thinking ? "qwen3-235b-a22b-thinking-2507" : "qwen3-235b-a22b-2507",
+            embedding_model: "gemini-embedding-001",
+            cost: "FREE",
+            analysis_mode: result.used_thinking ? "DEEP_THINKING" : "STANDARD",
+            task_type: result.task_type,
+            timestamp: new Date().toISOString(),
+            erasmo_optimized: true,
+            debug_info: {
+                context_available: result.context_available,
+                confidence: result.confidence,
+                user_verified: user_id === cognitiveCore.ERASMO_USER_ID
+            }
+        };
+        console.log('🎉 Response ready, sending to client');
+        return new Response(JSON.stringify(response), {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            }
+        });
+    } catch (error) {
+        console.error('💥 SUPER ERASMO Cognitive Core Error:', error);
+        console.error('📊 Error stack:', error.stack);
+        return new Response(JSON.stringify({
+            success: false,
+            error: error.message,
+            error_type: error.constructor.name,
+            timestamp: new Date().toISOString(),
+            erasmo_system: "COGNITIVE_CORE_OPTIMIZED",
+            debug_info: {
+                stack: error.stack?.split('\n').slice(0, 5)
+            }
+        }), {
+            status: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            }
+        });
+    }
+});

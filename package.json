@@ -7,26 +7,19 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "type-check": "tsc --noEmit",
-    "build:check": "npm run type-check && npm run lint && npm run build",
-    "supabase:start": "npx supabase start",
-    "supabase:stop": "npx supabase stop",
-    "supabase:push": "npx supabase db push --project-id gjvtncdjcslnkfctqnfy",
-    "supabase:functions:serve": "npx supabase functions serve --env-file .env.local",
-    "deploy:functions": "npx supabase functions deploy execute-command --project-id gjvtncdjcslnkfctqnfy && npx supabase functions deploy cognitive-core --project-id gjvtncdjcslnkfctqnfy && npx supabase functions deploy ingest-market-data-cron --project-id gjvtncdjcslnkfctqnfy && npx supabase functions deploy sentinel-agent-cron --project-id gjvtncdjcslnkfctqnfy && npx supabase functions deploy test-cognitive --project-id gjvtncdjcslnkfctqnfy",
-    "deploy:db": "npx supabase db push --project-id gjvtncdjcslnkfctqnfy",
-    "deploy": "npm run deploy:db && npm run deploy:functions",
-    "deploy:all": "npm run build && npm run deploy"
+    "test": "vitest"
   },
   "dependencies": {
     "@mistralai/mistralai": "^0.5.0",
     "@supabase/supabase-js": "^2.51.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "date-fns": "^4.1.0",
     "file-saver": "^2.0.5",
     "form-data": "^4.0.0",
     "framer-motion": "^12.23.6",
+    "jsdom": "^26.1.0",
     "lucide-react": "^0.525.0",
     "node-fetch": "^3.3.2",
     "openai": "^4.47.1",
@@ -35,7 +28,9 @@
     "react-hot-toast": "^2.5.2",
     "recharts": "^3.1.0",
     "sonner": "^1.6.1",
-    "xlsx": "^0.18.5"
+    "vitest": "^3.2.4",
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

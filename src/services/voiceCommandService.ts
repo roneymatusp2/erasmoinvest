@@ -316,11 +316,12 @@ class VoiceCommandService {
                 console.log('📝 Transcrição do Core:', cognitiveResponse.transcription);
             }
 
-            // ✅ RESPOSTA PRINCIPAL: Criar resultado estruturado
+            // ✅ RESPOSTA PRINCIPAL: Criar resultado estruturado (ANTES da formatação)
             const finalResult: VoiceCommandResult = {
                 action: 'cognitive_response',
                 data: {
-                    response: cognitiveResponse.response,
+                    response: cognitiveResponse.response, // Original para áudio
+                    formatted: '', // Será preenchido depois da formatação
                     confidence: cognitiveResponse.confidence,
                     sources: cognitiveResponse.sources,
                     suggestions: cognitiveResponse.suggestions,
@@ -331,27 +332,30 @@ class VoiceCommandService {
                 success: true,
                 timestamp: new Date().toISOString()
             };
-
-            this.state.result = finalResult;
             console.log('✅ Resultado final estruturado:', finalResult);
 
-            // 🔧 CRÍTICO: Callback para UI deve receber apenas a resposta de texto
-            // Não o objeto completo, senão aparece JSON na tela
-            const textResponse = cognitiveResponse.response;
-            console.log('📤 Enviando para UI apenas o texto:', textResponse.substring(0, 100) + '...');
+            // 🔧 CRÍTICO: Callback para UI deve receber texto FORMATADO
+            // Aplicar formatação para remover markdown antes de enviar para UI
+            const rawTextResponse = cognitiveResponse.response;
+            const formattedTextResponse = this.formatResponseForUI(rawTextResponse);
+            console.log('🎨 Texto formatado para UI:', formattedTextResponse.substring(0, 100) + '...');
+
+            // ✅ ATUALIZAR ESTADO com versão formatada
+            (finalResult.data as any).formatted = formattedTextResponse;
+            this.state.result = finalResult;
 
             // SOLUÇÃO DEFINITIVA: Callbacks específicos para diferentes tipos de resposta
 
-            // 1. Para transcrição/texto simples
+            // 1. Para transcrição/texto simples - SEMPRE texto formatado
             if (this.callbacks.onTranscriptionUpdate) {
-                this.callbacks.onTranscriptionUpdate(textResponse);
+                this.callbacks.onTranscriptionUpdate(formattedTextResponse);
             }
 
             // 2. Para resultado de comando (se a UI espera objeto)
             if (this.callbacks.onCommandResult) {
                 // Criar objeto super simples para evitar JSON complexo
                 const simpleResult = {
-                    text: textResponse,
+                    text: formattedTextResponse, // ✅ USANDO TEXTO FORMATADO
                     confidence: cognitiveResponse.confidence || 1.0,
                     success: true
                 };
@@ -398,11 +402,19 @@ class VoiceCommandService {
             const result = await this.executeCognitiveCore({ text });
 
             if (result && result.success && result.data && typeof result.data === 'object') {
-                // Extrair apenas o texto da resposta
-                const responseText = (result.data as any).response;
-                if (typeof responseText === 'string') {
-                    console.log('✅ Retornando apenas texto da resposta:', responseText.substring(0, 100) + '...');
-                    return responseText;
+                // Extrair texto formatado da resposta (preferir formatted sobre response)
+                const resultData = result.data as any;
+                const formattedText = resultData.formatted;
+                const rawText = resultData.response;
+                
+                if (typeof formattedText === 'string') {
+                    console.log('✅ Retornando texto formatado:', formattedText.substring(0, 100) + '...');
+                    return formattedText;
+                } else if (typeof rawText === 'string') {
+                    // Fallback: aplicar formatação se não tiver versão formatada
+                    const cleanText = this.formatResponseForUI(rawText);
+                    console.log('🔧 Aplicando formatação como fallback:', cleanText.substring(0, 100) + '...');
+                    return cleanText;
                 }
             }
 
@@ -488,32 +500,143 @@ class VoiceCommandService {
     }
 
     /**
-     * 🎨 FORMATAÇÃO DE RESPOSTA PARA UI
-     * Converte markdown e caracteres de escape para texto limpo
+     * 🎨 FORMATAÇÃO APRIMORADA DE RESPOSTA PARA UI
+     * Converte markdown e caracteres de escape para texto perfeitamente limpo
      */
     private formatResponseForUI(rawText: string): string {
-        return rawText
-            // Converter caracteres de escape
-            .replace(/\\n\\n/g, '\n\n')  // Duplas quebras de linha
-            .replace(/\\n/g, '\n')       // Quebras de linha simples
-            .replace(/\\t/g, '  ')       // Tabs para espaços
+        let formattedText = rawText;
 
-            // Converter markdown para texto simples (mantendo estrutura visual)
-            .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove **bold**
-            .replace(/\*(.*?)\*/g, '$1')      // Remove *italic*
-            .replace(/`(.*?)`/g, '$1')        // Remove `code`
+        // 1. NORMALIZAR CARACTERES DE ESCAPE
+        formattedText = formattedText
+            .replace(/\\n\\n/g, '\n\n')
+            .replace(/\\n/g, '\n')
+            .replace(/\\t/g, '  ')
+            .replace(/\\"/g, '"')
+            .replace(/\\'/g, "'");
 
-            // Manter headers mas limpar markdown
-            .replace(/### /g, '')  // Remove ### mas mantém o texto
-            .replace(/## /g, '')   // Remove ## mas mantém o texto
-            .replace(/# /g, '')    // Remove # mas mantém o texto
+        // 2. REMOVER MARKDOWN COMPLEXO
+        formattedText = formattedText
+            // Headers (### ## #)
+            .replace(/^#{1,6}\s+/gm, '')
+            // Bold (**texto** ou __texto__)
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/__(.*?)__/g, '$1')
+            // Italic (*texto* ou _texto_)
+            .replace(/\*(.*?)\*/g, '$1')
+            .replace(/_(.*?)_/g, '$1')
+            // Code (`código`)
+            .replace(/`([^`]+)`/g, '$1')
+            // Code blocks (```código```)
+            .replace(/```[\s\S]*?```/g, '')
+            // Links [texto](url)
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+            // Imagens ![alt](url)
+            .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1');
 
-            // Limpar outros elementos markdown
-            .replace(/---+/g, '───────────────────') // Converter separadores
-            .replace(/^\- /gm, '• ')  // Converter listas - para •
+        // 3. LIMPAR LISTAS E ESTRUTURAS
+        formattedText = formattedText
+            // Listas numeradas (1. 2. 3.)
+            .replace(/^\d+\.\s+/gm, '• ')
+            // Listas com traço (- item)
+            .replace(/^[\-\*]\s+/gm, '• ')
+            // Sublistas indentadas
+            .replace(/^  [\-\*]\s+/gm, '  ◦ ')
+            // Separadores horizontais
+            .replace(/^[\-=*]{3,}$/gm, '───────────────');
 
-            // Limpar espaços extras
-            .replace(/\n{3,}/g, '\n\n')  // Máximo 2 quebras seguidas
+        // 4. NORMALIZAR ESPAÇAMENTO PROFISSIONAL
+        formattedText = formattedText
+            // Remover múltiplas quebras de linha
+            .replace(/\n{4,}/g, '\n\n')
+            .replace(/\n{3}/g, '\n\n')
+            // Remover espaços no início/fim de linhas
+            .replace(/[ \t]+$/gm, '')
+            .replace(/^[ \t]+/gm, '')
+            // Normalizar espaços múltiplos
+            .replace(/[ \t]{2,}/g, ' ')
+            // Garantir espaço após emojis
+            .replace(/([📊📈📉💰🔍✅⚠️📤💎🎯🔄📅])\s*/g, '$1 ')
+            // Garantir espaço antes de pontos importantes
+            .replace(/([•])\s*/g, '$1 ');
+
+        // 5. MELHORAR FORMATAÇÃO PARA DADOS FINANCEIROS
+        formattedText = formattedText
+            // Formatar números de ações (ex: "250 ações" → "250 ações")
+            .replace(/(\d+)\s*(a[çc][õo]es?|cotas?|quotas?)/gi, '$1 $2')
+            // Formatar valores monetários
+            .replace(/R\$\s*(\d+)/g, 'R$ $1')
+            // Formatar percentuais
+            .replace(/(\d+(?:[.,]\d+)?)\s*%/g, '$1%')
+            // Melhorar formatação de tickers (VALE3, PETR4, etc.)
+            .replace(/\b([A-Z]{4}\d{1,2})\b/g, '$1');
+
+        // 6. ESTRUTURAÇÃO PROFISSIONAL FINAL
+        formattedText = formattedText
+            // Garantir quebras de linha adequadas após seções
+            .replace(/([📊📈📉💰🔍✅⚠️📤💎🎯🔄📅][^:]*:)\s*/g, '$1\n')
+            // Espaçamento adequado entre seções
+            .replace(/─{10,}/g, '\n───────────────\n')
+            // Quebra de linha antes de listas
+            .replace(/([.:])\s*\n([•])/g, '$1\n\n$2')
+            // Capitalizar início de parágrafos
+            .replace(/\n([a-z])/g, (match, letter) => '\n' + letter.toUpperCase())
+            // Garantir ponto final adequado
+            .replace(/([a-záàâãéêíóôõúç])(\n|$)/gi, (match, letter, ending) => {
+                // Não adicionar ponto se já tem pontuação
+                if (/[.!?:]$/.test(letter)) return match;
+                return letter + '.' + ending;
+            })
+            // Remover pontos duplos
+            .replace(/\.{2,}/g, '.')
+            // Remover vírgulas no final de linha
+            .replace(/,(\n|$)/g, '.$1')
+            // Trim final
+            .trim();
+
+        // 7. VALIDAÇÃO E FALLBACK
+        if (!formattedText || formattedText.length < 10) {
+            console.warn('🚨 Texto formatado muito curto, usando original:', formattedText);
+            return rawText.replace(/[\*\#\`\_\[\]]/g, '').trim();
+        }
+
+        console.log('✅ Texto formatado com sucesso:', formattedText.substring(0, 100) + '...');
+        
+        // 8. APLICAR FORMATAÇÃO PROFISSIONAL FINAL
+        const professionalText = this.applyProfessionalFormatting(formattedText);
+        
+        return professionalText;
+    }
+
+    /**
+     * 💼 FORMATAÇÃO PROFISSIONAL ESPECÍFICA PARA INVESTIMENTOS
+     * Aplica ajustes finais para parecer relatório profissional
+     */
+    private applyProfessionalFormatting(text: string): string {
+        return text
+            // 1. SEÇÕES BEM DEFINIDAS
+            .replace(/📊\s*([^:]+):/g, '\n📊 $1:\n')
+            .replace(/📅\s*([^:]+):/g, '\n📅 $1:\n')
+            .replace(/✅\s*([^:]+):/g, '\n✅ $1:\n')
+            .replace(/🔍\s*([^:]+):/g, '\n🔍 $1:\n')
+            .replace(/💰\s*([^:]+):/g, '\n💰 $1:\n')
+            
+            // 2. LISTAS PROFISSIONAIS
+            .replace(/^• /gm, '  • ')
+            .replace(/^◦ /gm, '    ◦ ')
+            
+            // 3. VALORES MONETÁRIOS DESTACADOS
+            .replace(/R\$\s*([0-9.,]+)/g, 'R$ $1')
+            .replace(/\(([+-]?[0-9.,]+%)\)/g, ' ($1)')
+            
+            // 4. ESPAÇAMENTO ENTRE SEÇÕES
+            .replace(/\n(📊|📅|✅|🔍|💰|🎯)/g, '\n\n$1')
+            
+            // 5. SEPARADORES ELEGANTES
+            .replace(/\n───────────────\n/g, '\n\n───────────────\n\n')
+            
+            // 6. REMOVER QUEBRAS EXCESSIVAS
+            .replace(/\n{3,}/g, '\n\n')
+            
             .trim();
     }
 
@@ -579,38 +702,109 @@ class VoiceCommandService {
     }
 
     /**
-     * 🧹 LIMPEZA DE TEXTO PARA ÁUDIO
-     * Remove formatação markdown e elementos visuais
+     * 🧹 LIMPEZA APRIMORADA DE TEXTO PARA ÁUDIO
+     * Remove formatação e otimiza para síntese de voz em português
      */
     private cleanTextForAudio(text: string): string {
-        return text
-            // Remover caracteres de escape
-            .replace(/\\n/g, ' ')
+        let audioText = text;
+
+        // 1. REMOVER CARACTERES DE ESCAPE E FORMATAÇÃO
+        audioText = audioText
+            .replace(/\\n\\n/g, '. ')
+            .replace(/\\n/g, '. ')
             .replace(/\\t/g, ' ')
+            .replace(/\\"/g, '"')
+            .replace(/\\'/g, "'");
 
-            // Remover markdown
+        // 2. REMOVER MARKDOWN COMPLETAMENTE
+        audioText = audioText
+            .replace(/^#{1,6}\s+/gm, '')
             .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/__(.*?)__/g, '$1')
             .replace(/\*(.*?)\*/g, '$1')
-            .replace(/`(.*?)`/g, '$1')
-            .replace(/###\s*/g, '')
-            .replace(/##\s*/g, '')
-            .replace(/#\s*/g, '')
-            .replace(/---+/g, '')
+            .replace(/_(.*?)_/g, '$1')
+            .replace(/`([^`]+)`/g, '$1')
+            .replace(/```[\s\S]*?```/g, '')
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+            .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1');
 
-            // Remover emojis e símbolos visuais
+        // 3. REMOVER TODOS OS EMOJIS E SÍMBOLOS VISUAIS
+        audioText = audioText
+            .replace(/[\u{1F600}-\u{1F64F}]/gu, '') // Emoticons
+            .replace(/[\u{1F300}-\u{1F5FF}]/gu, '') // Misc symbols
+            .replace(/[\u{1F680}-\u{1F6FF}]/gu, '') // Transport
+            .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '') // Flags
+            .replace(/[\u{2600}-\u{26FF}]/gu, '')   // Misc symbols
+            .replace(/[\u{2700}-\u{27BF}]/gu, '')   // Dingbats
             .replace(/[📊📈📉💰🔍✅⚠️📤💎🎯🔄🎵🎤🧠👉📅]/g, '')
             .replace(/[•▪▫■□▲▼◆◇]/g, '')
+            .replace(/[─━═╌╍]/g, '');
 
-            // Converter listas para pausas naturais
-            .replace(/^\- /gm, '. ')
-            .replace(/\n\n+/g, '. ')
-            .replace(/\n/g, '. ')
+        // 4. CONVERTER ESTRUTURAS PARA PAUSAS NATURAIS
+        audioText = audioText
+            .replace(/^\d+\.\s+/gm, '. ') // Listas numeradas
+            .replace(/^[\-\*]\s+/gm, '. ') // Listas com traços
+            .replace(/^  [\-\*]\s+/gm, '. ') // Sublistas
+            .replace(/^[\-=*]{3,}$/gm, '. ') // Separadores
+            .replace(/\n{2,}/g, '. ') // Múltiplas quebras
+            .replace(/\n/g, '. '); // Quebras simples
 
-            // Limpeza final
-            .replace(/\s{2,}/g, ' ')
-            .replace(/\.{2,}/g, '.')
-            .replace(/\.\s*\./g, '.')
+        // 5. OTIMIZAR PARA SÍNTESE DE VOZ EM PORTUGUÊS
+        audioText = audioText
+            // Expandir abreviações financeiras comuns
+            .replace(/\bDY\b/gi, 'dividend yield')
+            .replace(/\bROI\b/gi, 'retorno sobre investimento')
+            .replace(/\bP\/L\b/gi, 'preço sobre lucro')
+            .replace(/\bFII\b/gi, 'fundo de investimento imobiliário')
+            .replace(/\bETF\b/gi, 'fundo negociado em bolsa')
+            
+            // Melhorar pronúncia de valores monetários
+            .replace(/R\$\s*(\d+(?:[.,]\d{3})*(?:[.,]\d{2})?)/g, (match, number) => {
+                const cleanNumber = number.replace(/[.,]/g, match => match === ',' ? '.' : '');
+                return `${cleanNumber} reais`;
+            })
+            
+            // Melhorar pronúncia de percentuais
+            .replace(/(\d+(?:[.,]\d+)?)\s*%/g, '$1 por cento')
+            
+            // Melhorar pronúncia de tickers
+            .replace(/\b([A-Z]{4}\d{1,2})\b/g, (match) => {
+                return match.split('').join(' ');
+            })
+            
+            // Adicionar pausas após números grandes
+            .replace(/(\d{1,3}(?:[.,]\d{3})+)/g, '$1. ')
+            
+            // Melhorar fluidez com conjunções
+            .replace(/\. E /gi, ', e ')
+            .replace(/\. Mas /gi, ', mas ')
+            .replace(/\. Porém /gi, ', porém ')
+            .replace(/\. Entretanto /gi, ', entretanto ');
+
+        // 6. LIMPEZA FINAL PARA ÁUDIO
+        audioText = audioText
+            .replace(/\s{2,}/g, ' ') // Espaços múltiplos
+            .replace(/\.{2,}/g, '.') // Pontos múltiplos
+            .replace(/\.\s*\./g, '.') // Pontos consecutivos
+            .replace(/\,\s*\,/g, ',') // Vírgulas consecutivas
+            .replace(/^\.\s*/g, '') // Ponto no início
+            .replace(/\s*\.\s*$/g, '.') // Garantir ponto final
             .trim();
+
+        // 7. VALIDAÇÃO PARA ÁUDIO
+        if (!audioText || audioText.length < 5) {
+            console.warn('🚨 Texto para áudio muito curto:', audioText);
+            return 'Resposta não disponível para reprodução.';
+        }
+
+        // Limitar tamanho para síntese (máximo ~500 caracteres para melhor qualidade)
+        if (audioText.length > 500) {
+            audioText = audioText.substring(0, 497) + '...';
+            console.log('✂️ Texto truncado para síntese de voz:', audioText.length, 'caracteres');
+        }
+
+        console.log('🎵 Texto preparado para áudio:', audioText.substring(0, 100) + '...');
+        return audioText;
     }
 
     /**

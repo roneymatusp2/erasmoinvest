@@ -1,0 +1,255 @@
+﻿ESTRUTURA DO PROJETO: erasmoinvest - Copy (2)
+Gerado em: 26/07/2025 13:29:48
+===============================================
+
+erasmoinvest - Copy (2)/
+|-- .env
+|-- .env.example
+|-- .env.local
+|-- .gitignore
+|-- ACESSE_AQUI.txt
+|-- AI_INTEGRATION_SETUP.md
+|-- APLICAR_SQL_GEMINI.md
+|-- backup-test-edge-functions.html
+|-- backup-test-tesouro-edge-function.js
+|-- CACHE_SYSTEM_DOCUMENTATION.md
+|-- check_investments_structure.sql
+|-- codigo_completo_do_projeto_ATUAL.txt
+|-- CONFIG_ENV.md
+|-- consolidar‑erasmoinvest.ps1
+|-- CORES_CARDS_SOLUCAO.md
+|-- CORRECOES_FINAIS_INTERFACE.md
+|-- debug_brbi11.sql
+|-- debug_colors_test.html
+|-- DEPLOY.md
+|-- DEPLOYMENT_VERIFICATION_REPORT.md
+|-- DIAGNOSE_SQL_PROBLEM.sql
+|-- diagnose-flashing.js
+|-- EDGE_FUNCTION_TESOURO_IMPLEMENTADA.md
+|-- EDGE_FUNCTIONS_DEPLOY.md
+|-- EDGE_FUNCTIONS_IMPROVEMENTS.md
+|-- EMERGENCY_FIX_FLASHING.md
+|-- ENV_MIGRATION_GUIDE.md
+|-- eslint.config.js
+|-- fix_asset_type_enum.sql
+|-- FIX_DELETE_PROBLEM.md
+|-- FIX_SQL_FUNCTION.md
+|-- FIX_SQL_SIMPLE.sql
+|-- FIX_TOTALS_README.md
+|-- fix-flashing.js
+|-- generate-tree.ps1
+|-- index.html
+|-- INTERFACE_CLIENTE_FINAL.md
+|-- LICENSE
+|-- MELHORIAS_CALCULOS_INTERFACE.md
+|-- MIGRATION_100_PERCENT_COMPLETE_REPORT.md
+|-- MIGRATION_SUCCESS_REPORT.md
+|-- netlify.toml
+|-- package.json
+|-- postcss.config.js
+|-- process-command-updated.ts
+|-- README.md
+|-- RELEASE_NOTES_v2.0.md
+|-- RESUMO_FINAL.md
+|-- run-dev.sh
+|-- run-windows.ps1
+|-- SISTEMA_COMPLETO_IMPLEMENTADO.md
+|-- SISTEMA_COMPLETO_README.md
+|-- SOLUCAO_PISCAR.md
+|-- SOLUCAO_PISCAR_FINAL.md
+|-- SQL_COMPLETO_CORRIGIDO.sql
+|-- SQL_SCRIPTS_README.md
+|-- START_PROJECT.md
+|-- SUPABASE_ENV_SETUP.md
+|-- SUPABASE_FIX_RLS.sql
+|-- sync‑erasmoinvest.ps1
+|-- tailwind.config.js
+|-- test_asset_colors.tsx
+|-- test_calculations.sql
+|-- test-brapi-exchange.js
+|-- TESTE_FINAL_MELHORIAS.md
+|-- test-tesouro-direto.js
+|-- tsconfig.app.json
+|-- tsconfig.json
+|-- tsconfig.node.json
+|-- UPGRADE_GEMINI_EMBEDDINGS_COMPLETO.md
+|-- validate-tesouro-implementation.ps1
+|-- validate-tesouro-implementation.sh
+|-- vite.config.ts
+|-- .github/
+|   +-- workflows/
+|       |-- ci.yml
+|       |-- code-quality.yml
+|       |-- deploy.yml
+|       +-- supabase-ci-cd.yml
+|-- deployment/
+|   |-- deploy-all-functions.ps1
+|   |-- deploy-functions.js
+|   +-- secrets-config.json
+|-- public/
+|   +-- favicon.svg
+|-- scripts/
+|   |-- backfill_embeddings.ts
+|   |-- get-supabase-keys.md
+|   +-- README.md
+|-- src/
+|   |-- App.tsx
+|   |-- App.tsx.backup
+|   |-- index.css
+|   |-- main.tsx
+|   |-- vite-env.d.ts
+|   |-- components/
+|   |   |-- AddInvestmentModal.tsx
+|   |   |-- AdvancedDashboard.tsx
+|   |   |-- AdvancedPieChart.tsx
+|   |   |-- AiAssistant.tsx
+|   |   |-- AssetCard.tsx
+|   |   |-- AssetDetails.tsx
+|   |   |-- ChartsTab.tsx
+|   |   |-- DashboardTab.tsx
+|   |   |-- DebugInvestmentTable.tsx
+|   |   |-- EditInvestmentModal.tsx
+|   |   |-- FilterControls.tsx
+|   |   |-- Header.tsx
+|   |   |-- InvestmentTable.tsx
+|   |   |-- Login.tsx
+|   |   |-- NewAssetModal.tsx
+|   |   |-- OverviewTab.tsx
+|   |   |-- PortfolioOverview.tsx
+|   |   |-- PortfolioSummary.tsx
+|   |   |-- PortfolioTab.tsx
+|   |   |-- RenderDebug.tsx
+|   |   |-- RenderDebugger.tsx
+|   |   |-- SettingsTab.tsx
+|   |   |-- Summary.tsx
+|   |   |-- SuperAdvancedFilters.tsx
+|   |   |-- Tabs.tsx
+|   |   |-- TextCommandInput.tsx
+|   |   |-- VoiceCommandButton.tsx
+|   |   |-- VoiceCommandButton_optimized.tsx
+|   |   |-- VoiceCommandHelp.tsx
+|   |   |-- VoiceCommandIntegrationTest.tsx
+|   |   +-- __tests__/
+|   |       +-- ChartsTab.test.tsx
+|   |-- data/
+|   |   |-- assetMetadata.ts
+|   |   |-- portfolioData.ts
+|   |   +-- tickerMapping.ts
+|   |-- examples/
+|   |   +-- EdgeFunctionsIntegration.tsx
+|   |-- hooks/
+|   |   |-- useAuthState.ts
+|   |   |-- useDebouncedState.ts
+|   |   |-- useInvestmentData.ts
+|   |   +-- usePortfolioStore.ts
+|   |-- lib/
+|   |   +-- supabase.ts
+|   |-- pages/
+|   |   +-- VoiceCommandDemo.tsx
+|   |-- services/
+|   |   |-- authService.ts
+|   |   |-- debugService.ts
+|   |   |-- investmentService.ts
+|   |   |-- marketApi.ts
+|   |   |-- portfolioCalculator.ts
+|   |   |-- rlsFixService.ts
+|   |   |-- seedData.ts
+|   |   |-- supabaseClient.ts
+|   |   |-- supabaseService.ts
+|   |   |-- types.ts
+|   |   +-- voiceCommandService.ts
+|   |-- styles/
+|   |   +-- globals.css
+|   |-- types/
+|   |   |-- investment.ts
+|   |   +-- supabase.ts
+|   +-- utils/
+|       |-- assetType.ts
+|       |-- debounce.ts
+|       |-- debugFlashing.ts
+|       |-- precisionCalc.ts
+|       |-- preventFlashing.ts
+|       +-- smartLog.ts
+|-- supabase/
+|   |-- .gitignore
+|   |-- config.toml
+|   |-- .branches/
+|   |   +-- _current_branch
+|   |-- .temp/
+|   |   |-- cli-latest
+|   |   |-- gotrue-version
+|   |   |-- pooler-url
+|   |   |-- postgres-version
+|   |   |-- project-ref
+|   |   +-- rest-version
+|   |-- functions/
+|   |   |-- _shared/
+|   |   |   |-- cors.ts
+|   |   |   |-- gemini_embedding_service.ts
+|   |   |   +-- clients/
+|   |   |       +-- gemini.ts
+|   |   |-- calculate-snapshot/
+|   |   |   +-- index.ts
+|   |   |-- cognitive-core/
+|   |   |   |-- cognitive_core_logic.ts
+|   |   |   |-- index.ts
+|   |   |   +-- index_new.ts
+|   |   |-- cognitive-core-test/
+|   |   |-- create-user/
+|   |   |   +-- index.ts
+|   |   |-- execute-command/
+|   |   |   +-- index.ts
+|   |   |-- governor-agent/
+|   |   |   +-- index.ts
+|   |   |-- ingest-market-data-cron/
+|   |   |   +-- index.ts
+|   |   |-- ingest-news-cron/
+|   |   |   |-- index.ts
+|   |   |   +-- index_new.ts
+|   |   |-- ingest-portfolio-webhook/
+|   |   |   |-- index.ts
+|   |   |   +-- file/
+|   |   |-- master-router/
+|   |   |   +-- index.ts
+|   |   |-- moe-orchestrator/
+|   |   |   |-- index.ts
+|   |   |   +-- index_new.ts
+|   |   |-- process-command/
+|   |   |   |-- index.ts
+|   |   |   +-- index_new.ts
+|   |   |-- resilience-wrapper/
+|   |   |   +-- index.ts
+|   |   |-- sentinel-agent-cron/
+|   |   |   |-- index.ts
+|   |   |   +-- index_new.ts
+|   |   |-- system-health/
+|   |   |   +-- index.ts
+|   |   |-- tesouro-direto-proxy/
+|   |   |   +-- index.ts
+|   |   |-- test-cognitive/
+|   |   |   +-- index.ts
+|   |   |-- test-exchange-rate/
+|   |   |   +-- index.ts
+|   |   |-- test-gemini-embedding/
+|   |   |   +-- index.ts
+|   |   |-- text-to-speech/
+|   |   |   |-- index.ts
+|   |   |   |-- index_migrated.ts
+|   |   |   +-- index_new.ts
+|   |   |-- transcribe-audio/
+|   |   |   |-- index.ts
+|   |   |   +-- index_new.ts
+|   |   |-- usd-brl-rate/
+|   |   |   |-- index.ts
+|   |   |   +-- file/
+|   |   +-- validate-system/
+|   |       +-- index.ts
+|   +-- migrations/
+|       |-- 20250124000001_fix_get_investments_function.sql
+|       |-- 202507250601_create_definitive_portfolio_functions.sql
+|       +-- 20250725120000_create_prompt_registry.sql
++-- tests/
+    |-- setup.ts
+    |-- test-supabase-tesouro-proxy.html
+    |-- validate-migration.js
+    +-- validate-migration.ts

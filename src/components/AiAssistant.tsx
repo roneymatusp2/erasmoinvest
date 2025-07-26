@@ -44,8 +44,12 @@ export const AiAssistant: React.FC = () => {
 
     try {
       const result = await voiceService.processTextCommand(text);
-      if (result) {
-        const responseText = result.answer || result.response || result.message || result.confirmation || JSON.stringify(result);
+      if (result && typeof result === 'string') {
+        // Result é uma string formatada e limpa
+        addMessage('ai', result);
+      } else if (result && typeof result === 'object') {
+        // Fallback: se por algum motivo retornar objeto
+        const responseText = (result as any).answer || (result as any).response || (result as any).message || (result as any).confirmation || JSON.stringify(result);
         addMessage('ai', responseText);
       } else {
         addMessage('ai', 'Não foi possível obter uma resposta. Tente novamente.');
