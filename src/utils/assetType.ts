@@ -1,5 +1,26 @@
 export type SimplifiedAssetType = 'FII' | 'ACAO' | 'ETF' | 'REIT' | 'STOCK' | 'TESOURO_DIRETO' | 'OUTRO';
 
+export const ASSET_TYPE_COLORS: { [key: string]: string } = {
+  STOCK: '#3b82f6', // Azul
+  REIT: '#16a34a', // Verde
+  CRYPTO: '#f97316', // Laranja
+  TESOURO_DIRETO: '#8b5cf6', // Roxo
+  STOCK_US: '#ef4444', // Vermelho
+  ETF: '#eab308',      // Amarelo
+  FII: '#14b8a6',      // Ciano
+  UNKNOWN: '#6b7280',  // Cinza
+};
+
+export const ASSET_TYPE_NAMES: { [key in SimplifiedAssetType]: string } = {
+  ACAO: 'Ações',
+  FII: 'Fundos Imobiliários',
+  ETF: 'ETFs',
+  STOCK: 'Stocks',
+  REIT: 'REITs',
+  TESOURO_DIRETO: 'Tesouro Direto',
+  OUTRO: 'Outros',
+};
+
 export const getAssetType = (
   ticker: string,
   metadata?: { tipo?: string; pais?: string }

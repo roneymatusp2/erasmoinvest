@@ -82,6 +82,12 @@ export interface AssetMetadata {
   };
 }
 
+export interface MarketDataResponse {
+  currentPrice: number;
+  priceChangePercent: number | null;
+  currency: 'BRL' | 'USD';
+}
+
 export interface Portfolio {
   ticker: string;
   metadata?: AssetMetadata;
@@ -92,6 +98,7 @@ export interface Portfolio {
   currentPosition: number;
   totalYield: number;
   marketValue?: number;
+
   profit?: number;
   profitPercent?: number;
   averagePrice?: number;

@@ -104,7 +104,7 @@ const AssetCard: React.FC<AssetCardProps> = ({ portfolio, onClick, isActive, ind
       <div className={`absolute inset-0 bg-gradient-to-br ${colors.gradient} opacity-20 group-hover:opacity-30 transition-opacity duration-300`} />
       
       <div className="relative z-10">
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <div className="flex items-center space-x-3">
               <span className={`text-xl font-bold ${colors.ticker}`}>{ticker}</span>
@@ -116,11 +116,11 @@ const AssetCard: React.FC<AssetCardProps> = ({ portfolio, onClick, isActive, ind
               {metadata?.nome || ticker}
             </h3>
           </div>
-        <div className="text-right">
+        <div className="text-right flex-shrink-0">
           <p className="text-xl font-mono font-bold text-white">
             {formatCurrency(currentPrice)}
           </p>
-          <div className={`flex items-center justify-end space-x-1 text-sm ${getProfitColor(priceChangePercent)}`}>
+          <div className={`flex items-center justify-end space-x-1 text-sm whitespace-nowrap ${getProfitColor(priceChangePercent)}`}>
             {priceChangePercent != null && (
               priceChangePercent >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />
             )}

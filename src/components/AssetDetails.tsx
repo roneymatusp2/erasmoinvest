@@ -68,6 +68,13 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
   const profitPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
   const isProfit = totalProfit >= 0;
 
+  const formatNumber = (num: number, decimals = 2) => {
+    if (num === null || num === undefined) return '0,00';
+    const parts = num.toFixed(decimals).toString().split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return parts.join(',');
+  };
+
   const formatCurrency = (value: number, currency = 'BRL') => {
     const symbol = currency === 'USD' ? '$' : 'R$';
     return `${symbol} ${Math.abs(value).toLocaleString('pt-BR', { 
@@ -208,9 +215,7 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
               <Eye className="h-5 w-5 text-blue-400 mr-2" />
               <span className="text-sm text-slate-400">Posição Atual</span>
             </div>
-            <div className="text-lg font-bold text-white">
-              {currentPosition.toLocaleString('pt-BR')} cotas
-            </div>
+            <div className="text-lg font-bold text-purple-400">{formatNumber(currentPosition, 4)} cotas</div>
             <div className="text-xs text-slate-500">
               Valor investido: {formatCurrency(totalInvested)}
             </div>

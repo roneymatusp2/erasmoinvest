@@ -181,126 +181,41 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
     return row;
   };
 
-  // 💰 CÁLCULOS 100% CORRETOS - CORRIGIDO - ALTA PRECISÃO (10 CASAS DECIMAIS)
-  const calculateTotals = () => {
-    // Log mínimo para debug em produção
-    if (investments && investments.length > 0) {
-      console.log(`[${activeTab}] Calculando totais para ${investments.length} registros`);
-      if (investments[0]) {
-        console.log(`[${activeTab}] Exemplo:`, {
-          compra: investments[0].compra,
-          venda: investments[0].venda,
-          valor_unit: investments[0].valor_unit,
-          dividendos: investments[0].dividendos,
-          juros: investments[0].juros
-        });
-      }
-    }
-    
-    if (!investments || investments.length === 0) {
+  // ✅ OS TOTAIS AGORA VÊM DIRETAMENTE DO BACKEND (prop 'portfolio')
+  // A função de cálculo local foi removida para garantir consistência.
+  const getTotalsFromPortfolio = () => {
+    if (!portfolio || !investments || investments.length === 0) {
       return {
-        totalInvestido: 0,
-        currentPosition: 0,
-        totalDividendos: 0,
-        totalJuros: 0,
-        totalImpostos: 0,
-        totalProventos: 0,
-        precoMedio: 0,
-        dyGeral: 0,
-        moeda: metadata?.moeda || 'BRL'
+        totalInvestido: 0, currentPosition: 0, totalDividendos: 0,
+        totalJuros: 0, totalImpostos: 0, totalProventos: 0,
+        precoMedio: 0, dyGeral: 0, moeda: metadata?.moeda || 'BRL'
       };
     }
-    
-    // Variáveis de acumulação com precisão de 10 casas decimais
-    let totalInvestido = 0;
-    let currentPosition = 0;
-    let totalDividendos = 0;
-    let totalJuros = 0;
-    let totalImpostos = 0;
-    
-    // Converter os dados para o formato correto
-    const convertedInvestments = investments.map(convertToInvestmentRow);
-    
-    // Processar cada investment
-    convertedInvestments.forEach((investment) => {
-      const tipo = investment.tipo;
-      const quantidade = Number(investment.quantidade || 0);
-      let valorTotal = Number(investment.valor_total || 0);
-      const dividendos = Number(investment.dividendos || 0);
-      const juros = Number(investment.juros || 0);
-      const impostos = Number(investment.impostos || 0);
-      
-      // FALLBACK: Se valor_total é 0 para COMPRA/VENDA, calcular dinamicamente
-      if ((tipo === 'COMPRA' || tipo === 'VENDA') && valorTotal === 0 && quantidade > 0) {
-        const valorUnitario = Number(investment.valor_unitario || 0);
-        if (valorUnitario > 0) {
-          valorTotal = quantidade * valorUnitario;
-          console.log(`[${activeTab}] Recalculando valor_total: ${quantidade} * ${valorUnitario} = ${valorTotal}`);
-        }
-      }
-      
-      switch (tipo) {
-        case 'COMPRA':
-          totalInvestido = PrecisionCalc.add(totalInvestido, valorTotal);
-          currentPosition = PrecisionCalc.add(currentPosition, quantidade);
-          break;
-          
-        case 'VENDA':
-          currentPosition = PrecisionCalc.subtract(currentPosition, quantidade);
-          break;
-          
-        case 'DIVIDENDO':
-          if (dividendos > 0) {
-            totalDividendos = PrecisionCalc.add(totalDividendos, dividendos);
-          }
-          break;
-          
-        case 'JUROS':
-          if (juros > 0) {
-            totalJuros = PrecisionCalc.add(totalJuros, juros);
-          }
-          break;
-          
-        case 'DESDOBRAMENTO':
-          if (quantidade > 0) {
-            currentPosition = PrecisionCalc.add(currentPosition, quantidade);
-          }
-          break;
-      }
-      
-      // Impostos sempre são somados
-      if (impostos > 0) {
-        totalImpostos = PrecisionCalc.add(totalImpostos, impostos);
-      }
-    });
-    
-    // Cálculos finais com alta precisão
-    const totalProventos = PrecisionCalc.add(totalDividendos, totalJuros);
-    const precoMedio = PrecisionCalc.divide(totalInvestido, currentPosition);
-    const dyGeral = PrecisionCalc.percentage(totalProventos, totalInvestido);
-    
+
+    const totalProventos = PrecisionCalc.add(portfolio.totalDividends || 0, portfolio.totalJuros || 0);
+    const dyGeral = PrecisionCalc.percentage(totalProventos, portfolio.totalInvested || 0);
+
     const result = {
-      totalInvestido: PrecisionCalc.round7(totalInvestido),
-      currentPosition: PrecisionCalc.round7(currentPosition),
-      totalDividendos: PrecisionCalc.round7(totalDividendos),
-      totalJuros: PrecisionCalc.round7(totalJuros),
-      totalImpostos: PrecisionCalc.round7(totalImpostos),
-      totalProventos: PrecisionCalc.round7(totalProventos),
-      precoMedio: PrecisionCalc.round7(precoMedio),
-      dyGeral: PrecisionCalc.round7(dyGeral),
+      totalInvestido: portfolio.totalInvested,
+      currentPosition: portfolio.currentPosition,
+      totalDividendos: portfolio.totalDividends,
+      totalJuros: portfolio.totalJuros,
+      totalImpostos: portfolio.totalImpostos || 0,
+      totalProventos: totalProventos,
+      precoMedio: portfolio.averagePrice,
+      dyGeral: dyGeral,
       moeda: metadata?.moeda || 'BRL'
     };
-    
-    // Log do resultado final
-    console.log(`[${activeTab}] Totais calculados:`, {
-      totalInvestido: result.totalInvestido.toFixed(2),
-      currentPosition: result.currentPosition.toFixed(0),
-      totalProventos: result.totalProventos.toFixed(2),
-      dyGeral: result.dyGeral.toFixed(2) + '%'
+
+    console.log(`[${activeTab}] Totais recebidos do backend:`, {
+      totalInvestido: result.totalInvestido?.toFixed(2),
+      precoMedio: result.precoMedio?.toFixed(2),
+      currentPosition: result.currentPosition?.toFixed(2),
     });
-    
+
     return result;
   };
+
 
   const formatCurrency = (value: number, moeda: string) => {
     return PrecisionCalc.formatCurrency(value, moeda as 'BRL' | 'USD');
@@ -308,7 +223,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
 
   // Converter todos os dados para o formato correto antes de usar
   const data = investments.map(convertToInvestmentRow);
-  const totals = calculateTotals();
+  const totals = getTotalsFromPortfolio();
   const moeda = metadata?.moeda || 'BRL';
 
   const renderHeader = () => {
@@ -332,7 +247,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
         <div className="flex flex-col text-right">
           <div className="text-sm text-slate-400">Posição Atual</div>
           <div className="text-lg font-semibold text-white">
-            {Math.round(totals.currentPosition)} cotas
+            {formatNumber(totals.currentPosition, 4)} cotas
           </div>
         </div>
       </div>
@@ -576,7 +491,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
             <tr className="bg-slate-800 text-white font-semibold border-t-2 border-slate-700 hover:bg-slate-800">
               <td className="px-4 py-4 font-bold">TOTAIS</td>
               <td className="px-4 py-4 font-bold">-</td>
-              <td className="px-4 py-4 font-bold">{Math.round(totals.currentPosition)}</td>
+              <td className="px-4 py-4 font-bold">{formatNumber(totals.currentPosition, 4)}</td>
               <td className="px-4 py-4 text-red-400 font-bold">-</td>
               <td className="px-4 py-4 font-bold">
                 <span className="bg-blue-900/40 px-2 py-1 rounded">P.M: {formatCurrency(totals.precoMedio, moeda)}</span>
@@ -601,7 +516,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
                 </span>
               </td>
               <td className="px-4 py-4 font-bold" colSpan={2}>
-                <span className="bg-purple-900/20 px-2 py-1 rounded text-purple-300">SALDO: {Math.round(totals.currentPosition)} cotas</span>
+                <span className="bg-purple-900/20 px-2 py-1 rounded text-purple-300">SALDO: {formatNumber(totals.currentPosition, 4)} cotas</span>
               </td>
             </tr>
           </tfoot>
@@ -629,7 +544,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
           </div>
           <div className="text-center p-4 bg-slate-900/60 rounded-lg border border-slate-700 hover:border-purple-500/50 transition-colors shadow-lg">
             <div className="text-sm text-slate-400 mb-1">Posição Atual</div>
-            <div className="text-xl font-bold text-purple-400">{Math.round(totals.currentPosition)} cotas</div>
+            <div className="text-xl font-bold text-purple-400">{formatNumber(totals.currentPosition, 4)} cotas</div>
           </div>
         </div>
       </motion.div>

@@ -1,15 +1,10 @@
-import { Portfolio } from '../types/investment';
+import { Portfolio, MarketDataResponse } from '../types/investment';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 
 const finnhubApiKey = import.meta.env.VITE_FINNHUB_API_KEY;
 const brapiApiKey = import.meta.env.VITE_BRAPI_API_KEY;
 
-interface MarketDataResponse {
-  currentPrice: number;
-  priceChangePercent: number;
-  currency: string;
-}
 
 const getUSDBRLExchangeRate = async (): Promise<number> => {
   try {

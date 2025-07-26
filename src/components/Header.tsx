@@ -1,6 +1,6 @@
 import React from 'react';
-import { Trophy, TrendingUp, PieChart, Settings } from 'lucide-react';
-import VoiceCommandButton from './VoiceCommandButton';
+import { Trophy, TrendingUp, PieChart, Settings, BarChart3 } from 'lucide-react';
+
 
 interface HeaderProps {
   currentTab: string;
@@ -12,6 +12,7 @@ const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange }) => {
     { id: 'overview', label: 'Visão Geral', icon: PieChart },
     { id: 'dashboard', label: 'Dashboard', icon: TrendingUp },
     { id: 'portfolio', label: 'Portfólio', icon: Trophy },
+    { id: 'charts', label: 'Gráficos', icon: BarChart3 },
     { id: 'settings', label: 'Configurações', icon: Settings },
   ];
 
@@ -37,10 +38,7 @@ const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange }) => {
             </button>
           </div>
 
-          {/* Lado Direito: Botão de Comando de Voz */}
-          <div className="flex items-center">
-            <VoiceCommandButton />
-          </div>
+
         </div>
         
         <nav className="flex space-x-1 pb-4">
