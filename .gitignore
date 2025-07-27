@@ -1,2 +1,70 @@
+# Environment files (NUNCA committar!)
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env*.local
+
+# Supabase files
+supabase/bin/
+supabase/.temp/
+supabase/.branches/
+.supabase/
+
 # Supabase Edge Functions temporary files
 supabase/functions/**/file:/
+
+# API Keys e Secrets
+*.key
+*.pem
+secrets/
+config/secrets.*
+
+# IDE files
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# IDE e desenvolvimento perigosos
+.idea/
+.vscode/settings.json
+settings.json
+*.swp
+*.swo
+
+# Arquivos de configuração sensíveis
+config/
+configuration/
+*.config.js
+*.config.ts
+!vite.config.ts
+!tailwind.config.js
+
+# Logs e temporários
+*.log
+.temp/
+.cache/
+.tmp/
+
+# Arquivos de backup
+*.bak
+*.backup
+*~
