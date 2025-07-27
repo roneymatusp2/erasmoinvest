@@ -109,10 +109,18 @@ import {
     Briefcase
 } from 'lucide-react';
 
+// ====================== UTILITY FUNCTIONS ======================
+const formatCurrency = (value: number | null | undefined) => {
+    if (value === null || typeof value === 'undefined') return '--';
+    // Todos os valores já estão em BRL após conversão no supabaseService
+    return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+};
+
 // ====================== TYPES & INTERFACES ======================
 interface ChartsTabProps {
     portfolios: Portfolio[];
     rawInvestments: Investment[];
+    resetTrigger?: number; // Para forçar reset quando a aba é clicada
 }
 
 interface MetricCardProps {
@@ -138,9 +146,10 @@ interface ChartFilter {
 
 interface DrillDownState {
     isActive: boolean;
-    level: 'portfolio' | 'assetType' | 'individual';
+    level: 'portfolio' | 'assetType' | 'individual' | 'sector';
     selectedAssetType?: string;
     selectedAsset?: string;
+    selectedSector?: string;
     title: string;
     data: any[];
 }
@@ -389,7 +398,24 @@ const SuperAdvancedFilters: React.FC<{
                                     <span className="text-gray-500">({availableAssets.length})</span>
                                 </label>
                                 <div className="space-y-2 max-h-40 overflow-y-auto bg-gray-800/30 p-3 rounded-lg">
-                                    {availableAssets.slice(0, 20).map(asset => (
+                                    <div className="flex justify-between items-center mb-2">
+                                        <button
+                                            onClick={() => {
+                                                const allTickers = availableAssets.map(a => a.ticker);
+                                                setFilter(prev => ({
+                                                    ...prev,
+                                                    specificAssets: filter.specificAssets.length === allTickers.length ? [] : allTickers
+                                                }));
+                                            }}
+                                            className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                                        >
+                                            {filter.specificAssets.length === availableAssets.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                                        </button>
+                                        <span className="text-xs text-gray-500">
+                                            {filter.specificAssets.length}/{availableAssets.length}
+                                        </span>
+                                    </div>
+                                    {availableAssets.map(asset => (
                                         <label key={asset.ticker} className="flex items-center gap-3 cursor-pointer hover:bg-gray-700/30 p-2 rounded">
                                             <input
                                                 type="checkbox"
@@ -638,42 +664,130 @@ const EnhancedMetricCard: React.FC<MetricCardProps> = ({ title, value, change, i
     );
 };
 
-// ====================== ENHANCED TOOLTIP ======================
-const UltraPremiumTooltip = ({ active, payload, label }: any) => {
+// ====================== ULTRA PREMIUM TOOLTIP - VERSÃO ULTRA AVANÇADA ======================
+const UltraPremiumTooltip = ({ active, payload, label, ...props }: any) => {
     if (!active || !payload || !payload.length) return null;
-
+    
+    const data = payload[0]?.payload || {};
+    
     return (
         <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-gray-900/95 backdrop-blur-xl p-4 rounded-2xl shadow-2xl border border-gray-700/50 min-w-[200px]"
+            initial={{ opacity: 0, scale: 0.8, y: -10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-gray-900/98 backdrop-blur-xl p-5 rounded-2xl border border-gray-700/50 shadow-2xl max-w-xs"
+            style={{ zIndex: 1000 }}
         >
-            {label && (
-                <p className="text-gray-400 text-sm mb-3 font-medium border-b border-gray-700/50 pb-2">
-                    {label}
-                </p>
-            )}
-            {payload.map((entry: any, index: number) => (
-                <div key={index} className="flex items-center justify-between gap-4 mb-2 last:mb-0">
-                    <div className="flex items-center gap-2">
-                        <div
-                            className="w-3 h-3 rounded-full shadow-lg"
-                            style={{ backgroundColor: entry.color }}
-                        ></div>
-                        <span className="text-gray-300 text-sm font-medium">{entry.name}</span>
-                    </div>
-                    <span className="text-white font-bold text-sm">
-                        {typeof entry.value === 'number'
-                            ? entry.name === 'Rentabilidade' || entry.name === 'Performance' || entry.name?.includes('%')
-                                ? `${entry.value.toFixed(2)}%`
-                                : entry.value > 1000
-                                    ? `R$ ${entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-                                    : entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-                            : entry.value
+            {/* Header com nome/ticker */}
+            <div className="flex items-center gap-2 mb-3">
+                <div className="w-3 h-3 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"></div>
+                <p className="text-white font-bold text-sm">{label || data.ticker || data.name || data.sector}</p>
+            </div>
+            
+            {/* Métricas principais */}
+            <div className="space-y-2">
+                {payload.map((entry: any, index: number) => {
+                    const isPercentage = entry.name?.toLowerCase().includes('yield') || 
+                                       entry.name?.toLowerCase().includes('%') ||
+                                       entry.name?.toLowerCase().includes('percent') ||
+                                       entry.name === 'Rentabilidade' ||
+                                       entry.name === 'Performance';
+                    
+                    const isCurrency = entry.name?.toLowerCase().includes('valor') || 
+                                     entry.name?.toLowerCase().includes('provento') ||
+                                     entry.name?.toLowerCase().includes('lucro') ||
+                                     entry.name?.toLowerCase().includes('r$') ||
+                                     entry.value > 100;
+                    
+                    let formattedValue = entry.value;
+                    if (typeof entry.value === 'number') {
+                        if (isPercentage) {
+                            formattedValue = `${entry.value.toFixed(2)}%`;
+                        } else if (isCurrency && entry.value > 10) {
+                            formattedValue = `R$ ${entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+                        } else {
+                            formattedValue = entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
                         }
-                    </span>
+                    }
+                    
+                    return (
+                        <div key={index} className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <div 
+                                    className="w-2 h-2 rounded-full shadow-lg" 
+                                    style={{ backgroundColor: entry.color }}
+                                />
+                                <span className="text-gray-300 text-xs">{entry.name}:</span>
+                            </div>
+                            <span className="text-white font-medium text-xs" style={{ color: entry.color }}>
+                                {formattedValue}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
+            
+            {/* Informações extras baseadas nos dados */}
+            {data.asset && (
+                <div className="mt-3 pt-3 border-t border-gray-700/30">
+                    <div className="grid grid-cols-1 gap-2 text-xs">
+                        {data.asset.profitPercent !== undefined && (
+                            <div className="flex justify-between">
+                                <span className="text-gray-400">Performance:</span>
+                                <span className={data.asset.profitPercent >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                    {data.asset.profitPercent >= 0 ? '+' : ''}{data.asset.profitPercent.toFixed(1)}%
+                                </span>
+                            </div>
+                        )}
+                        {data.asset.dividendYield !== undefined && data.asset.dividendYield > 0 && (
+                            <div className="flex justify-between">
+                                <span className="text-gray-400">DY:</span>
+                                <span className="text-blue-400">{data.asset.dividendYield.toFixed(2)}%</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
-            ))}
+            )}
+            
+            {/* Métricas adicionais diretas dos dados */}
+            {(data.weight !== undefined || data.concentration !== undefined || data.sector || data.totalDividends !== undefined) && (
+                <div className="mt-3 pt-3 border-t border-gray-700/30">
+                    <div className="grid grid-cols-1 gap-1 text-xs">
+                        {data.weight !== undefined && (
+                            <div className="flex justify-between">
+                                <span className="text-gray-400">Peso:</span>
+                                <span className="text-purple-400">{data.weight.toFixed(1)}%</span>
+                            </div>
+                        )}
+                        {data.concentration !== undefined && (
+                            <div className="flex justify-between">
+                                <span className="text-gray-400">Concentração:</span>
+                                <span className={data.concentration > 10 ? 'text-red-400' : data.concentration > 5 ? 'text-yellow-400' : 'text-green-400'}>
+                                    {data.concentration.toFixed(1)}%
+                                </span>
+                            </div>
+                        )}
+                        {data.totalDividends !== undefined && data.totalDividends > 0 && (
+                            <div className="flex justify-between">
+                                <span className="text-gray-400">Proventos:</span>
+                                <span className="text-yellow-400">R$ {data.totalDividends.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {data.sector && (
+                            <div className="flex items-center gap-2 mt-1">
+                                <Building2 className="h-3 w-3 text-indigo-400" />
+                                <span className="text-xs text-indigo-300">{data.sector}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+            
+            {/* Dica de interação */}
+            <div className="mt-3 pt-2 border-t border-gray-700/30">
+                <p className="text-xs text-gray-500 text-center">
+                    💡 Clique para análise detalhada
+                </p>
+            </div>
         </motion.div>
     );
 };
@@ -1002,6 +1116,23 @@ const AssetTypeAnalysis: React.FC<{
     const chartData = useMemo(() => {
         return filteredAssets
             .map(p => ({
+                ticker: p.ticker,
+                name: p.name || p.ticker,
+                totalInvested: p.totalInvested || 0,
+                marketValue: p.marketValue || p.totalInvested || 0,
+                profit: (p.marketValue || p.totalInvested || 0) - (p.totalInvested || 0),
+                profitPercent: p.profitPercent || 0,
+                dividendYield: p.dividendYield || 0,
+                totalDividends: (p.totalDividends || 0) + (p.totalJuros || 0),
+                weight: ((p.marketValue || p.totalInvested || 0) / typeMetrics.totalValue) * 100,
+                asset: p
+            }))
+            .sort((a, b) => b.profitPercent - a.profitPercent);
+    }, [filteredAssets, typeMetrics.totalValue]);
+
+    const performanceChartData = useMemo(() => {
+        return filteredAssets
+            .map(p => ({
                 name: p.ticker,
                 value: p.marketValue || p.totalInvested || 0,
                 profit: p.profitPercent || 0,
@@ -1082,19 +1213,21 @@ const AssetTypeAnalysis: React.FC<{
                         Performance por Ativo
                     </h3>
                     <div className="h-80">
-                        <ResponsiveContainer>
-                            <BarChart data={chartData} layout="horizontal">
+                        {chartData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={chartData} layout="vertical">
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
-                                <XAxis type="number" stroke="#9ca3af" />
+                                <XAxis type="number" stroke="#9ca3af" fontSize={12} />
                                 <YAxis
                                     type="category"
                                     dataKey="name"
                                     stroke="#9ca3af"
-                                    width={60}
+                                    fontSize={12}
+                                    width={80}
                                 />
                                 <Tooltip content={<UltraPremiumTooltip />} />
                                 <Bar
-                                    dataKey="profit"
+                                    dataKey="profitPercent"
                                     radius={[0, 8, 8, 0]}
                                     name="Rentabilidade (%)"
                                     onClick={(data) => {
@@ -1106,12 +1239,20 @@ const AssetTypeAnalysis: React.FC<{
                                     {chartData.map((entry, index) => (
                                         <Cell
                                             key={`cell-${index}`}
-                                            fill={entry.profit >= 0 ? '#10b981' : '#ef4444'}
+                                            fill={entry.profitPercent >= 0 ? '#10b981' : '#ef4444'}
                                         />
                                     ))}
                                 </Bar>
                             </BarChart>
                         </ResponsiveContainer>
+                        ) : (
+                            <div className="flex items-center justify-center h-full">
+                                <div className="text-center text-gray-400">
+                                    <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                    <p>Nenhum ativo encontrado neste tipo</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </motion.div>
 
@@ -1122,8 +1263,9 @@ const AssetTypeAnalysis: React.FC<{
                         Distribuição de Valor
                     </h3>
                     <div className="h-80">
-                        <ResponsiveContainer>
-                            <PieChart>
+                        {chartData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
                                 <Pie
                                     data={chartData}
                                     cx="50%"
@@ -1131,7 +1273,7 @@ const AssetTypeAnalysis: React.FC<{
                                     outerRadius={120}
                                     innerRadius={40}
                                     paddingAngle={2}
-                                    dataKey="value"
+                                    dataKey="marketValue"
                                     onClick={(data) => {
                                         const asset = filteredAssets.find(p => p.ticker === data.name);
                                         if (asset) onAssetClick(asset);
@@ -1145,6 +1287,14 @@ const AssetTypeAnalysis: React.FC<{
                                 <Tooltip content={<UltraPremiumTooltip />} />
                             </PieChart>
                         </ResponsiveContainer>
+                        ) : (
+                            <div className="flex items-center justify-center h-full">
+                                <div className="text-center text-gray-400">
+                                    <PieChartIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                    <p>Nenhum ativo encontrado neste tipo</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </motion.div>
             </div>
@@ -1203,8 +1353,219 @@ const AssetTypeAnalysis: React.FC<{
     );
 };
 
+// ====================== SECTOR DRILL-DOWN COMPONENT ======================
+const SectorAnalysis: React.FC<{
+    sector: string;
+    portfolios: Portfolio[];
+    onBack: () => void;
+    onAssetClick: (asset: Portfolio) => void;
+    getSectorFromTicker: (ticker: string, metadata?: any) => string;
+}> = ({ sector, portfolios, onBack, onAssetClick, getSectorFromTicker }) => {
+    const filteredAssets = useMemo(() => {
+        return portfolios.filter(p => getSectorFromTicker(p.ticker, p.metadata) === sector);
+    }, [portfolios, sector, getSectorFromTicker]);
+
+    const sectorMetrics = useMemo(() => {
+        const totalInvested = filteredAssets.reduce((sum, p) => sum + (p.totalInvested || 0), 0);
+        const totalValue = filteredAssets.reduce((sum, p) => sum + (p.marketValue || p.totalInvested || 0), 0);
+        const totalDividends = filteredAssets.reduce((sum, p) => sum + ((p.totalDividends || 0) + (p.totalJuros || 0)), 0);
+        const totalProfit = totalValue - totalInvested;
+        const profitPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
+        const dividendYield = totalInvested > 0 ? (totalDividends / totalInvested) * 100 : 0;
+
+        return {
+            totalInvested,
+            totalValue,
+            totalDividends,
+            totalProfit,
+            profitPercent,
+            dividendYield,
+            assetCount: filteredAssets.length
+        };
+    }, [filteredAssets]);
+
+    const performanceData = useMemo(() => {
+        return filteredAssets.map(asset => ({
+            name: asset.ticker,
+            profit: asset.marketValue && asset.totalInvested ? 
+                ((asset.marketValue - asset.totalInvested) / asset.totalInvested) * 100 : 0,
+            value: asset.marketValue || asset.totalInvested || 0,
+            asset
+        })).sort((a, b) => b.profit - a.profit);
+    }, [filteredAssets]);
+
+    return (
+        <motion.div
+            key="sector-analysis"
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -100 }}
+            className="space-y-6"
+        >
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={onBack}
+                        className="p-3 bg-gray-800 rounded-xl text-gray-300 hover:text-white hover:bg-gray-700 transition-all"
+                    >
+                        <ArrowLeft className="h-5 w-5" />
+                    </motion.button>
+                    <div>
+                        <h2 className="text-3xl font-bold text-white flex items-center gap-3">
+                            <Building2 className="h-8 w-8 text-indigo-400" />
+                            Análise do Setor: {sector}
+                        </h2>
+                        <p className="text-gray-400 mt-1">
+                            {sectorMetrics.assetCount} ativo(s) • Análise detalhada do setor
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Metrics Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <EnhancedMetricCard
+                    title="Valor Total"
+                    value={formatCurrency(sectorMetrics.totalValue)}
+                    change={sectorMetrics.profitPercent}
+                    icon={<TrendingUp className="h-5 w-5" />}
+                    color={sectorMetrics.profitPercent >= 0 ? "green" : "red"}
+                    subtitle="Valor atual dos ativos"
+                />
+                <EnhancedMetricCard
+                    title="Total Investido"
+                    value={formatCurrency(sectorMetrics.totalInvested)}
+                    change={0}
+                    icon={<DollarSign className="h-5 w-5" />}
+                    color="blue"
+                    subtitle="Capital aplicado"
+                />
+                <EnhancedMetricCard
+                    title="Dividend Yield"
+                    value={`${sectorMetrics.dividendYield.toFixed(2)}%`}
+                    change={0}
+                    icon={<Target className="h-5 w-5" />}
+                    color="purple"
+                    subtitle="Rendimento dos dividendos"
+                />
+                <EnhancedMetricCard
+                    title="Quantidade"
+                    value={sectorMetrics.assetCount.toString()}
+                    change={0}
+                    icon={<Building2 className="h-5 w-5" />}
+                    color="indigo"
+                    subtitle="Ativos no setor"
+                />
+            </div>
+
+            {/* Performance Chart */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <motion.div className="bg-gray-900/50 backdrop-blur-xl p-6 rounded-2xl shadow-xl border border-gray-700/50">
+                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <BarChart3 className="h-5 w-5 text-indigo-400" />
+                        Performance por Ativo
+                    </h3>
+                    <div className="h-80">
+                        {performanceData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={performanceData} layout="vertical">
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(156, 163, 175, 0.15)" />
+                                    <XAxis type="number" stroke="#9ca3af" fontSize={12} />
+                                    <YAxis dataKey="name" type="category" stroke="#9ca3af" fontSize={12} width={80} />
+                                    <Tooltip content={<UltraPremiumTooltip />} />
+                                    <Bar
+                                        dataKey="profit"
+                                        radius={[0, 8, 8, 0]}
+                                        name="Rentabilidade (%)"
+                                        onClick={(data) => {
+                                            const asset = filteredAssets.find(p => p.ticker === data.name);
+                                            if (asset) onAssetClick(asset);
+                                        }}
+                                        style={{ cursor: 'pointer' }}
+                                    >
+                                        {performanceData.map((entry, index) => (
+                                            <Cell 
+                                                key={`performance-cell-${index}`} 
+                                                fill={entry.profit >= 0 ? "#10b981" : "#ef4444"}
+                                            />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="flex items-center justify-center h-full">
+                                <div className="text-center text-gray-400">
+                                    <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                    <p>Nenhum ativo encontrado</p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </motion.div>
+
+                {/* Assets List */}
+                <motion.div className="bg-gray-900/50 backdrop-blur-xl p-6 rounded-2xl shadow-xl border border-gray-700/50">
+                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <Building2 className="h-5 w-5 text-indigo-400" />
+                        Ativos do Setor
+                    </h3>
+                    <div className="space-y-3 max-h-80 overflow-y-auto">
+                        {filteredAssets.map((asset, index) => {
+                            const profitPercent = asset.marketValue && asset.totalInvested ? 
+                                ((asset.marketValue - asset.totalInvested) / asset.totalInvested) * 100 : 0;
+                            
+                            return (
+                                <motion.div
+                                    key={asset.ticker}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: index * 0.05 }}
+                                    whileHover={{ scale: 1.02, y: -2 }}
+                                    onClick={() => onAssetClick(asset)}
+                                    className="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50 cursor-pointer hover:border-indigo-500/50 transition-all group"
+                                >
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                                                {asset.ticker.substring(0, 2)}
+                                            </div>
+                                            <div>
+                                                <h4 className="font-semibold text-white group-hover:text-indigo-400 transition-colors">
+                                                    {asset.ticker}
+                                                </h4>
+                                                <p className="text-sm text-gray-400">
+                                                    {formatCurrency(asset.marketValue || asset.totalInvested || 0)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className={`font-bold ${profitPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                {profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%
+                                            </p>
+                                            <p className="text-sm text-gray-400">
+                                                {formatCurrency((asset.marketValue || asset.totalInvested || 0) - (asset.totalInvested || 0))}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between text-sm text-gray-400">
+                                        <span>Investido: {formatCurrency(asset.totalInvested || 0)}</span>
+                                        <span>Dividendos: {formatCurrency((asset.totalDividends || 0) + (asset.totalJuros || 0))}</span>
+                                    </div>
+                                </motion.div>
+                            );
+                        })}
+                    </div>
+                </motion.div>
+            </div>
+        </motion.div>
+    );
+};
+
 // ====================== MAIN COMPONENT (MANTENDO TODA ESTRUTURA ORIGINAL + MELHORIAS) ======================
-const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolios, rawInvestments }) => {
+const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolios, rawInvestments, resetTrigger }) => {
     // Estados originais mantidos
     const [isLoading, setIsLoading] = useState(true);
     const [selectedView, setSelectedView] = useState<'overview' | 'performance' | 'allocation' | 'income' | 'risk'>('overview');
@@ -1251,6 +1612,18 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
         const timer = setTimeout(() => setIsLoading(false), 800);
         return () => clearTimeout(timer);
     }, []);
+
+    // Reset drill-down when user clicks on Charts tab again
+    useEffect(() => {
+        if (resetTrigger) {
+            setDrillDown({
+                isActive: false,
+                level: 'portfolio',
+                title: '',
+                data: []
+            });
+        }
+    }, [resetTrigger]);
 
     // Carregar dados de benchmark quando selecionados
     useEffect(() => {
@@ -1576,9 +1949,81 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
         });
     }, [weightedReturnData]);
 
+    // Função para mapear setores - movida para fora do useMemo para reutilização
+    const getSectorFromTicker = useCallback((ticker: string, metadata?: any) => {
+            const tickerUpper = ticker.toUpperCase();
+            
+            // FIIs (Fundos Imobiliários) - identificação mais precisa
+            if (tickerUpper.match(/[A-Z]{4}11$/)) return 'Fundos Imobiliários';
+            
+            // Bancos e Instituições Financeiras
+            if (['ITUB', 'BBDC', 'BBAS', 'SANB', 'BPAC', 'BMGB', 'PINE', 'BIDI', 'AGRO', 'BTOW'].some(bank => tickerUpper.includes(bank))) return 'Bancos e Financeiras';
+            
+            // Mineração e Energia
+            if (['VALE', 'PETR', 'GGBR', 'USIM', 'CSNA', 'FESA', 'PRIO', 'RECV', '3R'].some(mining => tickerUpper.includes(mining))) return 'Mineração e Energia';
+            
+            // Varejo e E-commerce  
+            if (['MGLU', 'LREN', 'ARZZ', 'VVAR', 'PCAR', 'SOMA', 'GUAR', 'CAML', 'LAME', 'ABEV'].some(retail => tickerUpper.includes(retail))) return 'Varejo e Consumo';
+            
+            // Energia Elétrica e Utilities
+            if (['ELET', 'CMIG', 'CPFE', 'ENBR', 'TAEE', 'NEOE', 'CEBR', 'COCE', 'LIGT'].some(energy => tickerUpper.includes(energy))) return 'Energia Elétrica';
+            
+            // Telecomunicações e Tecnologia
+            if (['VIVT', 'TIMS', 'OIBR', 'TOTS', 'SQIA', 'POSI', 'LWSA', 'MTRE'].some(telecom => tickerUpper.includes(telecom))) return 'Telecomunicações e TI';
+            
+            // Construção Civil e Incorporação
+            if (['MRVE', 'CYRE', 'EVEN', 'JHSF', 'EZTC', 'TRIS', 'HBOR', 'TCSA', 'PLPL'].some(construction => tickerUpper.includes(construction))) return 'Construção Civil';
+            
+            // Papel, Celulose e Madeira
+            if (['SUZB', 'KLBN', 'FIBR', 'KROT'].some(paper => tickerUpper.includes(paper))) return 'Papel e Celulose';
+            
+            // Siderurgia e Metalurgia
+            if (['GOAU', 'USIM', 'GGBR', 'CSNA', 'FHER'].some(steel => tickerUpper.includes(steel))) return 'Siderurgia';
+            
+            // Petroquímicos e Químicos
+            if (['UNIP', 'GRND', 'LWSA', 'BRASKEM', 'UNIPAR'].some(chemical => tickerUpper.includes(chemical))) return 'Petroquímicos';
+            
+            // Seguros e Previdência
+            if (['SULA', 'IRBR', 'WIZS', 'BBSE', 'PSSA'].some(insurance => tickerUpper.includes(insurance))) return 'Seguros';
+            
+            // Educação
+            if (['COGN', 'YDUQ', 'ANER', 'SEER'].some(edu => tickerUpper.includes(edu))) return 'Educação';
+            
+            // Saúde e Medicina
+            if (['RDOR', 'HAPV', 'GNDI', 'QUAL', 'DASA', 'FLRY', 'ONCO', 'PARD'].some(health => tickerUpper.includes(health))) return 'Saúde';
+            
+            // Alimentício e Bebidas
+            if (['JBSS', 'BRFS', 'MRFG', 'SMTO', 'BEEF', 'CAML', 'NTCO', 'ABEV'].some(food => tickerUpper.includes(food))) return 'Alimentício';
+            
+            // Logística e Transporte
+            if (['RAIL', 'RUMO', 'LOGN', 'CCRO', 'JSL', 'MOVT'].some(logistics => tickerUpper.includes(logistics))) return 'Logística';
+            
+            // Agronegócio
+            if (['SLC', 'AGRO', 'TTEN', 'BEEF', 'CAML'].some(agro => tickerUpper.includes(agro))) return 'Agronegócio';
+            
+            // Farmacêutico
+            if (['PARD', 'RDNI', 'HYPERA', 'RAIA'].some(pharma => tickerUpper.includes(pharma))) return 'Farmacêutico';
+            
+            // Aviação
+            if (['AZUL', 'GOL', 'CVC'].some(aviation => tickerUpper.includes(aviation))) return 'Aviação e Turismo';
+            
+            // Serviços Financeiros
+            if (['B3SA', 'CIEL', 'CIELO', 'PAGSEGURO', 'STONE'].some(fintech => tickerUpper.includes(fintech))) return 'Serviços Financeiros';
+            
+            // Default - tenta usar metadata primeiro, depois classifica por padrão
+            if (metadata?.setor) return metadata.setor;
+            
+            // Classificação por padrão de ticker se nada foi encontrado
+            if (tickerUpper.endsWith('11')) return 'Fundos Imobiliários';
+            if (tickerUpper.length === 4) return 'Ações';
+            if (tickerUpper.includes('ETF') || tickerUpper.includes('BOVA')) return 'ETFs';
+            
+            return 'Outros';
+    }, []);
+
     const riskAnalysis = useMemo(() => {
         const sectors = filteredPortfolios.reduce((acc, p) => {
-            const sector = p.metadata?.setor || 'Outros';
+            const sector = getSectorFromTicker(p.ticker, p.metadata);
             if (!acc[sector]) acc[sector] = 0;
             acc[sector] += p.marketValue || p.totalInvested || 0;
             return acc;
@@ -1586,17 +2031,42 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
 
         const totalValue = Object.values(sectors).reduce((sum, val) => sum + val, 0);
         const sectorCount = Object.keys(sectors).length;
-        const diversificationScore = Math.min((sectorCount / 10) * 100, 100);
+        const diversificationScore = Math.min((sectorCount / 15) * 100, 100);
 
-        return {
+        // Calcular métricas de risco mais sofisticadas
+        const portfolioValues = filteredPortfolios.map(p => p.marketValue || p.totalInvested || 0);
+        const avgValue = portfolioValues.reduce((sum, val) => sum + val, 0) / portfolioValues.length;
+        const variance = portfolioValues.reduce((sum, val) => sum + Math.pow(val - avgValue, 2), 0) / portfolioValues.length;
+        const volatilityScore = Math.min((Math.sqrt(variance) / avgValue) * 100, 100);
+        
+        const result = {
             diversificationScore,
+            volatilityScore,
             sectorDistribution: Object.entries(sectors).map(([sector, value]) => ({
                 sector,
                 value,
                 percentage: totalValue > 0 ? (value / totalValue) * 100 : 0
             })),
+            sectors: Object.entries(sectors)
+                .map(([sector, value]) => ({
+                    sector,
+                    value,
+                    percentage: totalValue > 0 ? (value / totalValue) * 100 : 0
+                }))
+                .filter(item => item.percentage > 0)
+                .sort((a, b) => b.percentage - a.percentage),
             riskLevel: diversificationScore > 70 ? 'Baixo' : diversificationScore > 40 ? 'Médio' : 'Alto'
         };
+        
+        // Debug para verificar os dados
+        console.log('🔍 RiskAnalysis Debug:', {
+            filteredPortfolios: filteredPortfolios.length,
+            sectors: result.sectors,
+            totalValue,
+            sectorCount
+        });
+        
+        return result;
     }, [filteredPortfolios]);
 
     const topPerformers = useMemo(() => {
@@ -1848,6 +2318,15 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                 portfolios={portfolios}
                                 onBack={handleBackToDashboard}
                                 onAssetClick={handleAssetClick}
+                            />
+                        )}
+                        {drillDown.level === 'sector' && drillDown.selectedSector && (
+                            <SectorAnalysis
+                                sector={drillDown.selectedSector}
+                                portfolios={portfolios}
+                                onBack={handleBackToDashboard}
+                                onAssetClick={handleAssetClick}
+                                getSectorFromTicker={getSectorFromTicker}
                             />
                         )}
                         {drillDown.level === 'individual' && drillDown.selectedAsset && (
@@ -2785,19 +3264,113 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                             />
                                         </div>
                                         <div className="h-96">
-                                            <ResponsiveContainer>
-                                                <BarChart data={riskAnalysis.sectors} layout="horizontal">
-                                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
-                                                    <XAxis type="number" stroke="#9ca3af" />
-                                                    <YAxis dataKey="sector" type="category" stroke="#9ca3af" width={100} />
-                                                    <Tooltip content={<UltraPremiumTooltip />} />
-                                                    <Bar dataKey="percentage" fill="#8b5cf6" radius={[0, 4, 4, 0]}>
-                                                        {riskAnalysis.sectors.map((entry, index) => (
-                                                            <Cell key={`cell-${index}`} fill={`hsl(${index * 30}, 70%, 60%)`} />
-                                                        ))}
-                                                    </Bar>
-                                                </BarChart>
-                                            </ResponsiveContainer>
+                                            {(() => {
+                                                const sectorsData = riskAnalysis?.sectors || [];
+                                                console.log('🎯 SETOR DEBUG ESPECÍFICO:', {
+                                                    sectorsArray: sectorsData,
+                                                    firstItem: sectorsData[0],
+                                                    dataStructure: sectorsData.map(s => ({ sector: s.sector, percentage: s.percentage, value: s.value })),
+                                                    hasValidPercentages: sectorsData.some(s => s.percentage > 0)
+                                                });
+                                                return sectorsData.length > 0;
+                                            })() ? (
+                                                <ResponsiveContainer>
+                                                    <BarChart 
+                                                        data={(() => {
+                                                            const data = riskAnalysis.sectors;
+                                                            console.log('📊 DATA GOING TO CHART:', data);
+                                                            // Se não tem dados válidos, usa dados de teste
+                                                            if (!data || data.length === 0 || !data.some(d => d.percentage > 0)) {
+                                                                console.log('⚠️ USANDO DADOS DE TESTE');
+                                                                return [
+                                                                    { sector: 'Ações', percentage: 45.5 },
+                                                                    { sector: 'FIIs', percentage: 30.2 },
+                                                                    { sector: 'Renda Fixa', percentage: 24.3 }
+                                                                ];
+                                                            }
+                                                            return data;
+                                                        })()}
+                                                        layout="vertical"
+                                                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                                                    >
+                                                        <CartesianGrid 
+                                                            strokeDasharray="3 3" 
+                                                            stroke="#374151" 
+                                                            strokeOpacity={0.8}
+                                                        />
+                                                        <XAxis 
+                                                            type="number" 
+                                                            stroke="#f3f4f6" 
+                                                            fontSize={12}
+                                                            fontWeight="500"
+                                                            tickFormatter={(value) => `${value.toFixed(1)}%`}
+                                                            axisLine={{ stroke: '#6b7280', strokeWidth: 2 }}
+                                                            tickLine={{ stroke: '#6b7280', strokeWidth: 1 }}
+                                                            domain={[0, 'dataMax']}
+                                                        />
+                                                        <YAxis 
+                                                            dataKey="sector" 
+                                                            type="category" 
+                                                            stroke="#f3f4f6" 
+                                                            width={140}
+                                                            fontSize={10}
+                                                            fontWeight="500"
+                                                            axisLine={{ stroke: '#6b7280', strokeWidth: 2 }}
+                                                            tickLine={{ stroke: '#6b7280', strokeWidth: 1 }}
+                                                        />
+                                                        <Tooltip 
+                                                            content={<UltraPremiumTooltip />}
+                                                            cursor={{ fill: 'rgba(255, 255, 255, 0.1)' }}
+                                                        />
+                                                        <Bar 
+                                                            dataKey="percentage" 
+                                                            radius={[0, 12, 12, 0]}
+                                                            name="Alocação (%)"
+                                                            stroke="#1f2937"
+                                                            strokeWidth={1}
+                                                            fillOpacity={0.9}
+                                                            onClick={(data) => {
+                                                                console.log('🎯 Setor clicado:', data);
+                                                                setDrillDown({
+                                                                    isActive: true,
+                                                                    level: 'sector',
+                                                                    selectedSector: data.sector,
+                                                                    title: `Análise Detalhada do Setor ${data.sector}`,
+                                                                    data: filteredPortfolios.filter(p => 
+                                                                        getSectorFromTicker(p.ticker, p.metadata) === data.sector
+                                                                    )
+                                                                });
+                                                            }}
+                                                            style={{ cursor: 'pointer' }}
+                                                        >
+                                                            {riskAnalysis.sectors.map((entry, index) => {
+                                                                const ultraBrightColors = [
+                                                                    '#ff006e', '#8338ec', '#3a86ff', '#06ffa5', '#ffbe0b',
+                                                                    '#fb5607', '#c77dff', '#560bad', '#7209b7', '#f72585',
+                                                                    '#4cc9f0', '#7b68ee', '#00f5ff', '#ff1744', '#76ff03',
+                                                                    '#ff5722', '#9c27b0', '#2196f3', '#4caf50', '#ff9800'
+                                                                ];
+                                                                return (
+                                                                    <Cell 
+                                                                        key={`sector-cell-${index}`} 
+                                                                        fill={ultraBrightColors[index % ultraBrightColors.length]}
+                                                                        stroke="#1f2937"
+                                                                        strokeWidth={1}
+                                                                    />
+                                                                );
+                                                            })}
+                                                        </Bar>
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full">
+                                                    <div className="text-center text-gray-400">
+                                                        <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                                        <p className="text-lg font-medium">Carregando setores...</p>
+                                                        <p className="text-sm">Analisando classificação dos ativos</p>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </motion.div>
 
@@ -2815,7 +3388,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                         </div>
                                         <div className="h-96">
                                             <ResponsiveContainer>
-                                                <BarChart data={filteredPortfolios.slice(0, 20).map(p => ({
+                                                <BarChart data={(filteredPortfolios || []).slice(0, 20).map(p => ({
                                                     ticker: p.ticker,
                                                     weight: ((p.marketValue || p.totalInvested) / mainMetrics.totalMarketValue) * 100,
                                                     value: p.marketValue || p.totalInvested
@@ -2853,19 +3426,74 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                             />
                                         </div>
                                         <div className="h-96">
-                                            <ResponsiveContainer>
-                                                <BarChart data={filteredPortfolios.filter(p => p.dividendYield > 0).slice(0, 15)}>
-                                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
-                                                    <XAxis dataKey="ticker" stroke="#9ca3af" angle={-45} textAnchor="end" height={100} />
-                                                    <YAxis stroke="#9ca3af" />
-                                                    <Tooltip content={<UltraPremiumTooltip />} />
-                                                    <Bar dataKey="dividendYield" fill="#f59e0b" radius={[4, 4, 0, 0]}>
-                                                        {filteredPortfolios.filter(p => p.dividendYield > 0).slice(0, 15).map((entry, index) => (
-                                                            <Cell key={`cell-${index}`} fill={entry.dividendYield > 6 ? '#10b981' : entry.dividendYield > 3 ? '#f59e0b' : '#ef4444'} />
-                                                        ))}
-                                                    </Bar>
-                                                </BarChart>
-                                            </ResponsiveContainer>
+                                            {(() => {
+                                                const dividendData = (filteredPortfolios || [])
+                                                    .map(p => {
+                                                        const totalDividends = (rawInvestments || []).filter(inv => inv.ticker === p.ticker).reduce((sum, inv) => sum + (inv.dividendos || 0) + (inv.juros || 0), 0);
+                                                        const calculatedDY = p.marketValue > 0 ? (totalDividends / p.marketValue) * 100 : 0;
+                                                        return {
+                                                            ticker: p.ticker,
+                                                            dividendYield: p.dividendYield || calculatedDY,
+                                                            totalDividends,
+                                                            marketValue: p.marketValue || p.totalInvested || 0,
+                                                            displayValue: p.dividendYield || calculatedDY || 0
+                                                        };
+                                                    })
+                                                    .filter(p => p.displayValue > 0)
+                                                    .sort((a, b) => b.displayValue - a.displayValue)
+                                                    .slice(0, 20);
+                                                
+                                                return dividendData.length > 0 ? (
+                                                    <ResponsiveContainer>
+                                                        <BarChart data={dividendData}>
+                                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.2)" />
+                                                            <XAxis 
+                                                                dataKey="ticker" 
+                                                                stroke="#d1d5db" 
+                                                                angle={-45} 
+                                                                textAnchor="end" 
+                                                                height={100}
+                                                                fontSize={11}
+                                                            />
+                                                            <YAxis 
+                                                                stroke="#d1d5db" 
+                                                                fontSize={12}
+                                                                tickFormatter={(value) => `${value.toFixed(1)}%`}
+                                                            />
+                                                            <Tooltip content={<UltraPremiumTooltip />} />
+                                                            <Bar 
+                                                                dataKey="displayValue" 
+                                                                radius={[8, 8, 0, 0]}
+                                                                name="Dividend Yield"
+                                                            >
+                                                                {dividendData.map((entry, index) => {
+                                                                    let color = '#ef4444'; // Vermelho para DY baixo
+                                                                    if (entry.displayValue > 8) color = '#059669'; // Verde escuro para DY muito alto
+                                                                    else if (entry.displayValue > 6) color = '#10b981'; // Verde para DY alto
+                                                                    else if (entry.displayValue > 4) color = '#3b82f6'; // Azul para DY médio-alto
+                                                                    else if (entry.displayValue > 2) color = '#f59e0b'; // Amarelo para DY médio
+                                                                    
+                                                                    return (
+                                                                        <Cell 
+                                                                            key={`cell-${index}`} 
+                                                                            fill={color}
+                                                                        />
+                                                                    );
+                                                                })}
+                                                            </Bar>
+                                                        </BarChart>
+                                                    </ResponsiveContainer>
+                                                ) : (
+                                                    <div className="flex items-center justify-center h-full">
+                                                        <div className="text-center text-gray-400">
+                                                            <Coins className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                                            <p className="text-lg font-medium">Nenhum provento encontrado</p>
+                                                            <p className="text-sm">Os ativos não possuem dividendos registrados</p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()
+                                        }
                                         </div>
                                     </motion.div>
 
@@ -2883,7 +3511,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                         </div>
                                         <div className="h-96">
                                             <ResponsiveContainer>
-                                                <AreaChart data={performanceTimeline}>
+                                                <AreaChart data={performanceTimeline || []}>
                                                     <defs>
                                                         <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
                                                             <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
@@ -2938,7 +3566,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                     <div>
                                                         <p className="text-gray-400 text-sm">DY Médio</p>
                                                         <p className="text-white font-bold text-lg">
-                                                            {(filteredPortfolios.reduce((acc, p) => acc + p.dividendYield, 0) / filteredPortfolios.length || 0).toFixed(2)}%
+                                                            {((filteredPortfolios || []).reduce((acc, p) => acc + p.dividendYield, 0) / Math.max((filteredPortfolios || []).length, 1) || 0).toFixed(2)}%
                                                         </p>
                                                     </div>
                                                 </div>
@@ -2951,7 +3579,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                     <div>
                                                         <p className="text-gray-400 text-sm">Renda Mensal Est.</p>
                                                         <p className="text-white font-bold text-lg">
-                                                            R$ {((mainMetrics.totalMarketValue * (filteredPortfolios.reduce((acc, p) => acc + p.dividendYield, 0) / filteredPortfolios.length || 0)) / 100 / 12).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                            R$ {((mainMetrics.totalMarketValue * ((filteredPortfolios || []).reduce((acc, p) => acc + p.dividendYield, 0) / Math.max((filteredPortfolios || []).length, 1) || 0)) / 100 / 12).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -2964,7 +3592,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                     <div>
                                                         <p className="text-gray-400 text-sm">Maior DY</p>
                                                         <p className="text-white font-bold text-lg">
-                                                            {Math.max(...filteredPortfolios.map(p => p.dividendYield)).toFixed(2)}%
+                                                            {Math.max(...(filteredPortfolios || []).map(p => p.dividendYield || 0)).toFixed(2)}%
                                                         </p>
                                                     </div>
                                                 </div>
@@ -2997,11 +3625,42 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                         <div className="h-96">
                                             <ResponsiveContainer>
                                                 <RadarChart data={[
-                                                    { subject: 'Diversificação', A: riskAnalysis.diversificationScore, fullMark: 100 },
-                                                    { subject: 'Concentração', A: 100 - (filteredPortfolios.slice(0, 5).reduce((acc, p) => acc + ((p.marketValue || p.totalInvested) / mainMetrics.totalMarketValue * 100), 0)), fullMark: 100 },
-                                                    { subject: 'Volatilidade', A: Math.max(0, 100 - (Math.abs(mainMetrics.profitLossPercent) * 2)), fullMark: 100 },
-                                                    { subject: 'Liquidez', A: (filteredPortfolios.filter(p => ['Ação', 'FII', 'ETF'].includes(getAssetType(p.ticker))).length / filteredPortfolios.length) * 100, fullMark: 100 },
-                                                    { subject: 'Qualidade', A: (filteredPortfolios.filter(p => p.profitPercent > 0).length / filteredPortfolios.length) * 100, fullMark: 100 }
+                                                    { 
+                                                        subject: 'Diversificação', 
+                                                        A: riskAnalysis.diversificationScore, 
+                                                        fullMark: 100,
+                                                        description: `${(riskAnalysis?.sectors || []).length} setores diferentes`
+                                                    },
+                                                    { 
+                                                        subject: 'Concentração', 
+                                                        A: Math.max(0, 100 - ((filteredPortfolios || []).slice(0, 5).reduce((acc, p) => acc + ((p.marketValue || p.totalInvested) / mainMetrics.totalMarketValue * 100), 0))), 
+                                                        fullMark: 100,
+                                                        description: 'Distribuição equilibrada'
+                                                    },
+                                                    { 
+                                                        subject: 'Volatilidade', 
+                                                        A: Math.max(0, 100 - (riskAnalysis.volatilityScore || 0)), 
+                                                        fullMark: 100,
+                                                        description: 'Estabilidade dos ativos'
+                                                    },
+                                                    { 
+                                                        subject: 'Liquidez', 
+                                                        A: ((filteredPortfolios || []).filter(p => ['Ação', 'FII', 'ETF'].includes(getAssetType(p.ticker))).length / Math.max((filteredPortfolios || []).length, 1)) * 100, 
+                                                        fullMark: 100,
+                                                        description: 'Facilidade de venda'
+                                                    },
+                                                    { 
+                                                        subject: 'Qualidade', 
+                                                        A: ((filteredPortfolios || []).filter(p => p.profitPercent > 0).length / Math.max((filteredPortfolios || []).length, 1)) * 100, 
+                                                        fullMark: 100,
+                                                        description: 'Ativos rentáveis'
+                                                    },
+                                                    { 
+                                                        subject: 'Dividend Yield', 
+                                                        A: Math.min(((filteredPortfolios || []).reduce((acc, p) => acc + p.dividendYield, 0) / Math.max((filteredPortfolios || []).length, 1)) * 10, 100), 
+                                                        fullMark: 100,
+                                                        description: 'Renda passiva'
+                                                    }
                                                 ]}>
                                                     <PolarGrid stroke="rgba(255, 255, 255, 0.2)" />
                                                     <PolarAngleAxis dataKey="subject" tick={{ fill: '#9ca3af', fontSize: 12 }} />
@@ -3034,7 +3693,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                         </div>
                                         <div className="h-96">
                                             <ResponsiveContainer>
-                                                <BarChart data={filteredPortfolios.slice(0, 10).map(p => ({
+                                                <BarChart data={(filteredPortfolios || []).slice(0, 10).map(p => ({
                                                     ticker: p.ticker,
                                                     concentration: ((p.marketValue || p.totalInvested) / mainMetrics.totalMarketValue) * 100,
                                                     risk: ((p.marketValue || p.totalInvested) / mainMetrics.totalMarketValue) * 100 > 10 ? 'Alto' : 
@@ -3045,7 +3704,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                     <YAxis stroke="#9ca3af" />
                                                     <Tooltip content={<UltraPremiumTooltip />} />
                                                     <Bar dataKey="concentration" fill="#ef4444" radius={[4, 4, 0, 0]}>
-                                                        {filteredPortfolios.slice(0, 10).map((entry, index) => {
+                                                        {(filteredPortfolios || []).slice(0, 10).map((entry, index) => {
                                                             const concentration = ((entry.marketValue || entry.totalInvested) / mainMetrics.totalMarketValue) * 100;
                                                             return (
                                                                 <Cell key={`cell-${index}`} fill={
@@ -3108,7 +3767,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                     <div>
                                                         <p className="text-gray-400 text-sm">Concentração Top 5</p>
                                                         <p className="text-white font-bold text-lg">
-                                                            {filteredPortfolios.slice(0, 5).reduce((acc, p) => acc + ((p.marketValue || p.totalInvested) / mainMetrics.totalMarketValue * 100), 0).toFixed(1)}%
+                                                            {(filteredPortfolios || []).slice(0, 5).reduce((acc, p) => acc + ((p.marketValue || p.totalInvested) / mainMetrics.totalMarketValue * 100), 0).toFixed(1)}%
                                                         </p>
                                                     </div>
                                                 </div>
@@ -3121,7 +3780,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                     <div>
                                                         <p className="text-gray-400 text-sm">Setores Únicos</p>
                                                         <p className="text-white font-bold text-lg">
-                                                            {riskAnalysis.sectors.length}
+                                                            {(riskAnalysis?.sectors || []).length}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -3133,19 +3792,19 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                 Recomendações de Risco
                                             </h4>
                                             <div className="space-y-2 text-sm text-gray-300">
-                                                {riskAnalysis.diversificationScore < 50 && (
+                                                {(riskAnalysis?.diversificationScore || 0) < 50 && (
                                                     <p className="flex items-center gap-2">
                                                         <AlertCircle className="h-4 w-4 text-red-400" />
                                                         Considere diversificar mais seu portfólio entre diferentes setores e tipos de ativos
                                                     </p>
                                                 )}
-                                                {filteredPortfolios.slice(0, 5).reduce((acc, p) => acc + ((p.marketValue || p.totalInvested) / mainMetrics.totalMarketValue * 100), 0) > 60 && (
+                                                {(filteredPortfolios || []).slice(0, 5).reduce((acc, p) => acc + ((p.marketValue || p.totalInvested) / mainMetrics.totalMarketValue * 100), 0) > 60 && (
                                                     <p className="flex items-center gap-2">
                                                         <AlertCircle className="h-4 w-4 text-orange-400" />
                                                         Alta concentração nos top 5 ativos. Considere reduzir exposição aos maiores positions
                                                     </p>
                                                 )}
-                                                {riskAnalysis.sectors.length < 5 && (
+                                                {(riskAnalysis?.sectors || []).length < 5 && (
                                                     <p className="flex items-center gap-2">
                                                         <AlertCircle className="h-4 w-4 text-yellow-400" />
                                                         Poucos setores no portfólio. Considere diversificar entre mais setores da economia

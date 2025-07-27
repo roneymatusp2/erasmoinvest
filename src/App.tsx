@@ -56,6 +56,13 @@ function App() {
     const [activeTab, setActiveTab] = useState<string>('');
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [refreshKey, setRefreshKey] = useState<number>(0);
+    const [resetTriggers, setResetTriggers] = useState<Record<string, number>>({
+        charts: 0,
+        dashboard: 0,
+        portfolio: 0,
+        overview: 0,
+        settings: 0
+    });
     const [showHorizontal, setShowHorizontal] = useState<boolean>(true);
     const [loading, setLoading] = useState<boolean>(true);
     const [useLocalData, setUseLocalData] = useState<boolean>(false); // USAR DADOS DO SUPABASE
@@ -199,9 +206,6 @@ function App() {
         );
     }, [searchTerm, sortedInvestments]);
 
-    const handleTabChange = (tab: string) => {
-        setActiveTab(tab);
-    };
 
     const handleDataChange = () => {
         setRefreshKey(prev => prev + 1);
@@ -556,6 +560,32 @@ function App() {
         }
     };
 
+    // Enhanced tab change handler that resets components when clicking the same tab
+    const handleTabChange = (newTab: string) => {
+        const isMainTab = ['overview', 'dashboard', 'portfolio', 'charts', 'settings'].includes(newTab);
+        
+        if (isMainTab && activeTab === newTab) {
+            // Clicking the same main tab - increment reset trigger
+            setResetTriggers(prev => ({
+                ...prev,
+                [newTab]: prev[newTab] + 1
+            }));
+            
+            // Give user feedback that we reset to home
+            const tabNames = {
+                overview: 'Visão Geral',
+                dashboard: 'Dashboard', 
+                portfolio: 'Portfólio',
+                charts: 'Gráficos',
+                settings: 'Configurações'
+            };
+            toast.success(`🏠 Voltou ao início de ${tabNames[newTab as keyof typeof tabNames]}`);
+        } else {
+            // Normal tab change
+            setActiveTab(newTab);
+        }
+    };
+
     // 🎨 Função para obter classes de cor dos botões da grade de ativos
     const getTabColor = (ticker: string): string => {
         // Se a aba está ativa, manter destaque azul padrão
@@ -622,7 +652,7 @@ function App() {
                 theme="dark"
             />
 
-            <Header currentTab={activeTab} onTabChange={setActiveTab} />
+            <Header currentTab={activeTab} onTabChange={handleTabChange} />
 
             <main className="max-w-7xl mx-auto px-4 py-6 pb-24">
 
@@ -752,7 +782,7 @@ function App() {
                                     onNewAsset={() => setShowNewAssetModal(true)}
                                 />
                             )}
-                            {activeTab === 'charts' && <ChartsTab portfolios={portfolios} rawInvestments={rawInvestments} />}
+                            {activeTab === 'charts' && <ChartsTab portfolios={portfolios} rawInvestments={rawInvestments} resetTrigger={resetTriggers.charts} />}
                             {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} />}
                         </motion.div>
                     ) : (
