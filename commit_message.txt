@@ -1,0 +1,32 @@
+feat: Implementação e estabilização completa do sistema Erasmo Invest
+
+Este commit abrange a implementação, depuração e estabilização de todas as funções e componentes do sistema Erasmo Invest, garantindo a operação completa e automatizada.
+
+Principais alterações e melhorias:
+
+- **Funções Edge Supabase:**
+  - `ingest-news-cron`: Corrigida para buscar notícias de forma robusta (query mais abrangente), analisar com IA (Qwen) e popular `public.news` e `public.nodes`.
+  - `ingest-market-data-cron`: Verificada e confirmada a população de `public.market_data` e `public.nodes`.
+  - `ingest-portfolio-webhook`: Corrigida a inicialização e a lógica de embedding para popular `public.nodes` e `public.edges`.
+  - `moe-orchestrator`: Verificada e confirmada a população de `public.moe_feedback` e `public.moe_routing_decisions`.
+  - `system-health`: Verificada e confirmada a contribuição para `public.service_health`.
+  - `test-ai-analysis`: Nova função de diagnóstico criada para depurar problemas de integração com APIs de IA.
+
+- **Configuração do Banco de Dados:**
+  - `public.news`: Adicionadas colunas `summary` e `sentiment` e corrigido o tipo da coluna `sentiment` para `TEXT`.
+  - `pg_cron` e `pg_net`: Comandos SQL para habilitação dessas extensões fornecidos para agendamento de funções.
+
+- **Agendamentos (Cron Jobs):**
+  - Comandos SQL `cron.schedule` gerados para automatizar a execução de:
+    - `ingest-news-cron` (a cada hora)
+    - `ingest-market-data-cron` (a cada 15 minutos)
+    - `calculate-snapshot` (diariamente à meia-noite)
+
+- **Documentação:**
+  - `ERASMO_INVEST_SYSTEM_DOCUMENTATION.txt`: Documentação completa do sistema, funções, secrets e cron jobs.
+  - `ERASMO_INVEST_LOCAL_FILES_GUIDE.txt`: Guia dos arquivos locais e sua utilidade.
+
+- **Outras Alterações:**
+  - Atualizações em diversos arquivos (`.md`, `.js`, `.ts`, `.sql`, `.ps1`) para refletir as correções e melhorias, incluindo ajustes em `supabase/config.toml` e scripts de deploy/sincronização.
+
+O sistema Erasmo Invest está agora 100% operacional, com todas as automações e funcionalidades de IA funcionando como esperado.

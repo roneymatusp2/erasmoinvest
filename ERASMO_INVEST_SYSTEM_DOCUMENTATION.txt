@@ -1,0 +1,297 @@
+# Documentação do Sistema Erasmo Invest
+
+Este documento detalha a arquitetura, funções, segredos, agendamentos (cron jobs) e arquivos chave do sistema Erasmo Invest, uma plataforma inteligente de gestão e análise de investimentos construída sobre o Supabase.
+
+---
+
+## 1. Visão Geral do Sistema
+
+O Erasmo Invest é um sistema avançado que combina automação de dados, inteligência artificial (LLMs e embeddings Gemini) e um robusto banco de dados PostgreSQL para fornecer insights, gerenciar portfólios e responder a perguntas complexas sobre investimentos.
+
+**Fluxo Principal:**
+1.  **Ingestão de Dados**: Funções automatizadas coletam dados de mercado, notícias e portfólio.
+2.  **Interação do Usuário**: Comandos de texto/voz são processados por IA.
+3.  **Processamento Inteligente**: Comandos são roteados para funções especializadas (execução direta, análise complexa, MoE).
+4.  **Geração de Insights**: Agentes autônomos fornecem alertas e recomendações.
+5.  **Resiliência e Monitoramento**: Camadas de proteção garantem a estabilidade e observabilidade.
+
+---
+
+## 2. Funções Edge do Supabase
+
+As funções são o coração da lógica de negócio e inteligência do sistema.
+
+### 2.1. Interação e Processamento de Comandos
+
+*   **`master-router`**
+    *   **Propósito**: Ponto de entrada principal para comandos do usuário.
+    *   **Funcionalidade**: Classifica comandos (simples, mercado, portfólio, complexo) e os roteia para a função apropriada.
+    *   **Tabelas Populadas**: `public.agent_logs` (telemetria).
+    *   **Dependências**: `process-command`, `execute-command`, `cognitive-core`, `moe-orchestrator`.
+
+*   **`process-command`**
+    *   **Propósito**: Extrai intenção e parâmetros de comandos simples em linguagem natural.
+    *   **Funcionalidade**: Usa LLM (Qwen) para converter texto em JSON estruturado para execução.
+    *   **Tabelas Populadas**: `public.agent_logs`.
+    *   **Dependências**: `QWEN_OPENROUTER_API`.
+
+*   **`execute-command`**
+    *   **Propósito**: Executa ações diretas no banco de dados.
+    *   **Funcionalidade**: Recebe JSON estruturado e invoca funções RPC no PostgreSQL (ex: `add_investment_operation`, `get_portfolio_summary`).
+    *   **Tabelas Populadas**: `public.agent_logs`.
+    *   **Dependências**: Funções RPC do banco de dados.
+
+*   **`cognitive-core`**
+    *   **Propósito**: Responde a perguntas complexas com contextualização e raciocínio avançado.
+    *   **Funcionalidade**: Gera embedding Gemini da query, busca contexto no Grafo de Conhecimento, e usa LLM (Qwen-Thinking) para gerar resposta.
+    *   **Tabelas Populadas**: `public.agent_logs`.
+    *   **Dependências**: `Gemini_Embedding`, `QWEN_OPENROUTER_API_THINKING`, `public.nodes`, `public.edges`, funções RPC de portfólio.
+
+*   **`moe-orchestrator`**
+    *   **Propósito**: Roteia perguntas complexas para "especialistas" de IA otimizados.
+    *   **Funcionalidade**: LLM "roteador" seleciona o expert mais adequado e o invoca.
+    *   **Tabelas Populadas**: `public.moe_feedback`, `public.moe_routing_decisions`, `public.agent_logs`.
+    *   **Dependências**: `QWEN_OPENROUTER_API`, `QWEN_OPENROUTER_API_THINKING`, `public.moe_experts`.
+
+*   **`transcribe-audio`**
+    *   **Propósito**: Converte áudio em texto.
+    *   **Funcionalidade**: Usa API Voxtral (Mistral) para transcrever áudio.
+    *   **Tabelas Populadas**: Nenhuma diretamente.
+    *   **Dependências**: `ErasmoInvest_API_MISTRAL_text`.
+
+*   **`text-to-speech`**
+    *   **Propósito**: Converte texto em áudio.
+    *   **Funcionalidade**: Usa API Text-to-Speech do Google Cloud.
+    *   **Tabelas Populadas**: Nenhuma diretamente.
+    *   **Dependências**: `GOOGLE_CLOUD_API_KEY`.
+
+### 2.2. Ingestão e Análise de Dados (Automação)
+
+*   **`ingest-news-cron`**
+    *   **Propósito**: Coleta e processa notícias financeiras automaticamente.
+    *   **Funcionalidade**: Busca notícias (NewsAPI), analisa sentimento/entidades/resumo com LLM (Qwen), gera embedding Gemini.
+    *   **Tabelas Populadas**: `public.news`, `public.nodes`, `public.agent_logs`.
+    *   **Dependências**: `ErasmoInvest_NewsAPI`, `QWEN_OPENROUTER_API`, `Gemini_Embedding`.
+    *   **Agendamento (via `pg_cron`)**: `0 * * * *` (A cada hora).
+
+*   **`ingest-market-data-cron`**
+    *   **Propósito**: Coleta e processa dados de mercado.
+    *   **Funcionalidade**: Gera dados de mercado (simulado, mas para API real), gera embedding Gemini.
+    *   **Tabelas Populadas**: `public.market_data`, `public.nodes`, `public.agent_logs`.
+    *   **Dependências**: `Gemini_Embedding`.
+    *   **Agendamento (via `pg_cron`)**: `*/15 * * * *` (A cada 15 minutos).
+
+*   **`ingest-portfolio-webhook`**
+    *   **Propósito**: Mantém o Grafo de Conhecimento atualizado com operações de investimento.
+    *   **Funcionalidade**: Acionada por webhook (INSERT/UPDATE em `investments`), gera embedding Gemini para a operação, cria nós e arestas.
+    *   **Tabelas Populadas**: `public.nodes`, `public.edges`.
+    *   **Dependências**: `Gemini_Embedding`.
+
+*   **`calculate-snapshot`**
+    *   **Propósito**: Cria um "instantâneo" diário do portfólio.
+    *   **Funcionalidade**: Invoca função RPC `create_user_snapshot` no banco de dados.
+    *   **Tabelas Populadas**: `public.portfolio_snapshots`.
+    *   **Dependências**: Função RPC `create_user_snapshot`.
+    *   **Agendamento (via `pg_cron`)**: `0 0 * * *` (Diariamente à meia-noite).
+
+*   **`sentinel-agent-cron`**
+    *   **Propósito**: Gera insights e alertas proativos.
+    *   **Funcionalidade**: Analisa portfólio, mercado e notícias com LLM (Qwen-Thinking) para gerar recomendações.
+    *   **Tabelas Populadas**: `public.insights`, `public.agent_logs`.
+    *   **Dependências**: `QWEN_OPENROUTER_API_THINKING`, `public.investments`, `public.market_data`, `public.news`.
+
+### 2.3. Governança, Resiliência e Monitoramento
+
+*   **`governor-agent`**
+    *   **Propósito**: Camada de segurança e governança para ações de IA.
+    *   **Funcionalidade**: Avalia propostas de ações de outros agentes com LLM (Qwen-Thinking) e decide aprovar/rejeitar.
+    *   **Tabelas Populadas**: `public.governance_log`, `public.agent_logs`.
+    *   **Dependências**: `QWEN_OPENROUTER_API_THINKING`, `public.prompts` (para o prompt do sistema).
+
+*   **`resilience-wrapper`**
+    *   **Propósito**: Aumenta a robustez e disponibilidade das funções.
+    *   **Funcionalidade**: Implementa retentativas, circuit breakers e fallbacks para funções.
+    *   **Tabelas Populadas**: `public.service_health`.
+    *   **Dependências**: `public.fallback_responses`.
+
+*   **`system-health`**
+    *   **Propósito**: Fornece visão geral da saúde do sistema.
+    *   **Funcionalidade**: Coleta métricas de logs, status de funções e experts MoE.
+    *   **Tabelas Populadas**: Nenhuma diretamente (lê de `public.agent_logs`, `public.service_health`, `public.moe_experts`).
+
+### 2.4. Utilitários e Testes
+
+*   **`create-user`**
+    *   **Propósito**: Gerencia o registro de novos usuários.
+    *   **Funcionalidade**: Cria usuário no Supabase Auth, insere perfil e cria nó no Grafo de Conhecimento.
+    *   **Tabelas Populadas**: `auth.users`, `public.profiles`, `public.nodes`.
+
+*   **`tesouro-direto-proxy`**
+    *   **Propósito**: Busca dados de títulos do Tesouro Direto.
+    *   **Funcionalidade**: Proxy para APIs externas de Tesouro Direto com fallback.
+
+*   **`usd-brl-rate`**
+    *   **Propósito**: Obtém a taxa de câmbio USD-BRL.
+    *   **Funcionalidade**: Busca cotação de API externa.
+
+*   **`test-cognitive`, `test-exchange-rate`, `test-gemini-embedding`, `validate-system`**
+    *   **Propósito**: Funções de diagnóstico e validação de componentes.
+    *   **Funcionalidade**: Testam APIs, banco de dados, variáveis de ambiente, etc.
+
+---
+
+## 3. Secrets (Variáveis de Ambiente)
+
+Essas chaves são essenciais para o funcionamento das funções, permitindo a comunicação com APIs externas e o Supabase.
+
+*   `SUPABASE_URL`: URL do seu projeto Supabase. Usado por todas as funções que interagem com o banco de dados.
+*   `SUPABASE_ANON_KEY`: Chave pública do Supabase. Usada para invocar funções Edge (especialmente em cron jobs).
+*   `SUPABASE_SERVICE_ROLE_KEY`: Chave de serviço do Supabase. Usada por funções que precisam de acesso privilegiado ao banco de dados (ex: `ingest-news-cron`, `ingest-market-data-cron`, `create-user`).
+*   `Gemini_Embedding`: Chave da API Gemini para geração de embeddings. Usada por `ingest-news-cron`, `ingest-market-data-cron`, `ingest-portfolio-webhook`, `cognitive-core`.
+*   `ErasmoInvest_NewsAPI`: Chave da API NewsAPI. Usada por `ingest-news-cron`.
+*   `QWEN_OPENROUTER_API`: Chave da API OpenRouter para modelos Qwen (geralmente modelos menores para tarefas específicas). Usada por `process-command`, `ingest-news-cron`, `moe-orchestrator`.
+*   `QWEN_OPENROUTER_API_THINKING`: Chave da API OpenRouter para modelos Qwen (geralmente modelos maiores para raciocínio complexo). Usada por `cognitive-core`, `moe-orchestrator`, `sentinel-agent-cron`, `governor-agent`.
+*   `GOOGLE_CLOUD_API_KEY`: Chave da API Google Cloud (para Text-to-Speech). Usada por `text-to-speech`.
+*   `ErasmoInvest_API_MISTRAL_text`: Chave da API Mistral (para Voxtral/transcrição de áudio). Usada por `transcribe-audio`.
+*   `VITE_BRAPI_API_KEY`: Chave da API BRAPI (para cotações de mercado). (Mencionado em testes, mas não diretamente usado nas funções de ingestão analisadas).
+*   `EXCHANGERATE_API_KEY`: Chave da API ExchangeRate (para taxas de câmbio). Usada por `test-exchange-rate`.
+
+---
+
+## 4. Cron Jobs (Agendamentos)
+
+Os cron jobs são configurados diretamente no banco de dados Supabase usando as extensões `pg_cron` e `pg_net`. Eles invocam as funções Edge em intervalos regulares.
+
+*   **`ingest-news-cron`**
+    *   **Nome do Job**: `invoke-ingest-news-cron`
+    *   **Agendamento**: `0 * * * *` (A cada hora)
+    *   **Comando SQL**:
+        ```sql
+        SELECT cron.schedule(
+          'invoke-ingest-news-cron',
+          '0 * * * *',
+          $$
+          SELECT
+            net.http_post(
+                url:='https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/ingest-news-cron',
+                headers:=jsonb_build_object(
+                    'Content-Type', 'application/json',
+                    'Authorization', 'Bearer <SUA_ANON_KEY_AQUI>'
+                ),
+                body:='{}'::jsonb
+            ) AS request_id;
+          $$
+        );
+        ```
+
+*   **`ingest-market-data-cron`**
+    *   **Nome do Job**: `invoke-ingest-market-data-cron`
+    *   **Agendamento**: `*/15 * * * *` (A cada 15 minutos)
+    *   **Comando SQL**:
+        ```sql
+        SELECT cron.schedule(
+          'invoke-ingest-market-data-cron',
+          '*/15 * * * *',
+          $$
+          SELECT
+            net.http_post(
+                url:='https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/ingest-market-data-cron',
+                headers:=jsonb_build_object(
+                    'Content-Type', 'application/json',
+                    'Authorization', 'Bearer <SUA_ANON_KEY_AQUI>'
+                ),
+                body:='{}'::jsonb
+            ) AS request_id;
+          $$
+        );
+        ```
+
+*   **`calculate-snapshot`**
+    *   **Nome do Job**: `invoke-calculate-snapshot`
+    *   **Agendamento**: `0 0 * * *` (Diariamente à meia-noite)
+    *   **Comando SQL**:
+        ```sql
+        SELECT cron.schedule(
+          'invoke-calculate-snapshot',
+          '0 0 * * *',
+          $$
+          SELECT
+            net.http_post(
+                url:='https://gjvtncdjcslnkfctqnfy.supabase.co/functions/v1/calculate-snapshot',
+                headers:=jsonb_build_object(
+                    'Content-Type', 'application/json',
+                    'Authorization', 'Bearer <SUA_ANON_KEY_AQUI>'
+                ),
+                body:=jsonb_build_object('userId', '4362da88-d01c-4ffe-a447-75751ea8e182') -- ID do usuário
+            ) AS request_id;
+          $$
+        );
+        ```
+    *   **Nota**: Substitua `<SUA_ANON_KEY_AQUI>` pela sua chave `anon_key` real e o `userId` pelo ID do usuário que você deseja que o snapshot seja calculado.
+
+---
+
+## 5. Arquivos Chave Utilizados
+
+*   **`supabase/config.toml`**: Arquivo de configuração do projeto Supabase. **Não** contém as configurações de agendamento de funções Edge (elas são feitas via SQL).
+*   **`supabase/functions/<nome_da_funcao>/index.ts`**: Onde o código TypeScript de cada função Edge reside.
+*   **`supabase/functions/_shared/`**: Diretório para código compartilhado entre as funções (embora algumas funções tenham sido modificadas para incluir dependências diretamente para maior robustez).
+*   **Comandos SQL para Habilitar Extensões**:
+    ```sql
+    CREATE EXTENSION IF NOT EXISTS pg_cron;
+    CREATE EXTENSION IF NOT EXISTS pg_net;
+    ```
+*   **Comandos SQL para Ajustes de Schema**:
+    ```sql
+    ALTER TABLE public.news ADD COLUMN IF NOT EXISTS summary TEXT;
+    ALTER TABLE public.news ADD COLUMN IF NOT EXISTS sentiment TEXT;
+    ALTER TABLE public.news ALTER COLUMN sentiment TYPE TEXT;
+    ```
+
+---
+
+## 6. Tabelas Chave do Banco de Dados (`public` schema)
+
+*   **`public.nodes`**: Tabela central do Grafo de Conhecimento. Armazena entidades (notícias, dados de mercado, operações, usuários) e seus embeddings.
+    *   **Populada por**: `ingest-news-cron`, `ingest-market-data-cron`, `ingest-portfolio-webhook`, `create-user`.
+*   **`public.edges`**: Define as relações entre os nós no Grafo de Conhecimento.
+    *   **Populada por**: `ingest-portfolio-webhook`.
+*   **`public.news`**: Armazena artigos de notícias, incluindo título, conteúdo, fonte, data, sentimento e resumo.
+    *   **Populada por**: `ingest-news-cron`.
+*   **`public.market_data`**: Armazena dados de mercado para tickers (preço, volume, etc.).
+    *   **Populada por**: `ingest-market-data-cron`.
+*   **`public.investments`**: Registra as operações de compra e venda de ativos do usuário.
+    *   **Populada por**: `execute-command` (via RPCs).
+*   **`public.portfolio_snapshots`**: Histórico diário do portfólio do usuário.
+    *   **Populada por**: `calculate-snapshot` (via RPC).
+*   **`public.agent_logs`**: Logs detalhados de cada execução de função (latência, status, tokens usados, erros).
+    *   **Populada por**: Quase todas as funções Edge.
+*   **`public.moe_experts`**: Configuração dos "especialistas" de IA para o `moe-orchestrator`.
+*   **`public.moe_feedback`**: Armazena feedback sobre a qualidade das respostas dos experts MoE.
+    *   **Populada por**: `moe-orchestrator`.
+*   **`public.moe_routing_decisions`**: Registra qual expert foi escolhido para cada query pelo `moe-orchestrator`.
+    *   **Populada por**: `moe-orchestrator`.
+*   **`public.insights`**: Armazena os insights e alertas proativos gerados pelo `sentinel-agent-cron`.
+    *   **Populada por**: `sentinel-agent-cron`.
+*   **`public.service_health`**: Monitora o status de saúde das funções e serviços.
+    *   **Populada por**: `resilience-wrapper` (indiretamente pelas funções que ele envolve).
+*   **`public.prompts`**: Armazena os prompts de sistema usados pelos LLMs.
+*   **`public.profiles`**: Informações de perfil dos usuários.
+    *   **Populada por**: `create-user`.
+*   **`public.governance_log`**: Registra as decisões do `governor-agent`.
+    *   **Populada por**: `governor-agent`.
+
+---
+
+## 7. Notas de Manutenção e Solução de Problemas
+
+*   **Permissões de Arquivo**: Durante o processo, encontramos problemas de permissão para modificar arquivos diretamente. A solução foi remover e recriar os diretórios das funções ou usar a escrita direta quando possível.
+*   **APIs Externas Vazias**: A NewsAPI pode retornar resultados vazios para queries muito específicas. A solução foi usar queries mais abrangentes.
+*   **Erros de Análise de IA**: Problemas com a formatação do conteúdo enviado para LLMs podem causar "Bad Request". A solução foi limpar o texto e usar prompts mais explícitos, além de implementar fallbacks.
+*   **Incompatibilidade de Schema**: Erros como "column not found" ou "invalid input syntax for type numeric" indicam que a estrutura da tabela no banco de dados não corresponde ao que a função espera. A solução é ajustar o schema da tabela via SQL (`ALTER TABLE`).
+*   **Agendamento de Funções**: Cron jobs para Edge Functions são configurados via comandos SQL (`cron.schedule`) no SQL Editor do Supabase, e não no `config.toml`. As extensões `pg_cron` e `pg_net` devem estar habilitadas.
+
+---
+
+Este documento deve servir como um guia completo para entender e manter o seu sistema Erasmo Invest.
+

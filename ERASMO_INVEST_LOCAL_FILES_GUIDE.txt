@@ -1,0 +1,112 @@
+# Guia de Arquivos Locais do Sistema Erasmo Invest
+
+Este documento lista e descreve os arquivos e diretórios locais essenciais que compõem o sistema Erasmo Invest, explicando a utilidade de cada um.
+
+---
+
+## 1. Arquivos na Raiz do Projeto
+
+*   **`.env.example`**
+    *   **Utilidade**: Fornece um modelo para as variáveis de ambiente necessárias para o projeto. Você deve criar um arquivo `.env` (não versionado) baseado neste, preenchendo com suas chaves e URLs reais.
+
+*   **`.gitignore`**
+    *   **Utilidade**: Define quais arquivos e diretórios o Git deve ignorar (não rastrear), como `node_modules`, arquivos de ambiente (`.env`), logs, e diretórios de build (`dist`).
+
+*   **`package.json`**
+    *   **Utilidade**: Contém metadados do projeto Node.js/React, como nome, versão, scripts de execução (ex: `dev`, `build`) e uma lista de dependências do projeto.
+
+*   **`package-lock.json`**
+    *   **Utilidade**: Garante que as dependências do projeto sejam instaladas com as mesmas versões exatas em qualquer ambiente, promovendo consistência.
+
+*   **`tailwind.config.js`**
+    *   **Utilidade**: Arquivo de configuração principal do Tailwind CSS, onde você pode personalizar temas, cores, fontes, plugins e outras utilidades do framework CSS.
+
+*   **`postcss.config.js`**
+    *   **Utilidade**: Configuração para o PostCSS, um processador CSS que o Tailwind utiliza. Geralmente inclui plugins como `tailwindcss` e `autoprefixer`.
+
+*   **`vite.config.ts`**
+    *   **Utilidade**: Arquivo de configuração do Vite, o bundler e servidor de desenvolvimento utilizado pelo projeto React. Define como o projeto é construído e servido.
+
+*   **`tsconfig.json`**
+    *   **Utilidade**: Arquivo de configuração do TypeScript para o projeto. Define opções do compilador, como a versão do ECMAScript de saída, módulos, e onde encontrar os arquivos TypeScript.
+
+*   **`README.md`**
+    *   **Utilidade**: Documentação inicial do projeto, geralmente contendo informações sobre como configurar, rodar e contribuir com o projeto.
+
+*   **`ERASMO_INVEST_SYSTEM_DOCUMENTATION.txt`**
+    *   **Utilidade**: Documentação completa do sistema, incluindo funções, secrets, cron jobs e tabelas (o arquivo que acabamos de criar).
+
+---
+
+## 2. Diretório `src/` (Código Fonte da Aplicação Frontend)
+
+Contém todo o código-fonte da interface do usuário (frontend) do Erasmo Invest, construída com React e TypeScript.
+
+*   **`src/App.tsx`**
+    *   **Utilidade**: O componente React principal da aplicação, onde a estrutura geral e o roteamento são definidos.
+
+*   **`src/index.css`**
+    *   **Utilidade**: Arquivo CSS principal que importa as diretivas do Tailwind e pode conter estilos globais adicionais.
+
+*   **`src/main.tsx`**
+    *   **Utilidade**: O ponto de entrada da aplicação React, onde o componente `App` é renderizado no DOM.
+
+*   **`src/vite-env.d.ts`**
+    *   **Utilidade**: Arquivo de declaração de tipos TypeScript para o ambiente Vite, garantindo que o TypeScript reconheça as variáveis de ambiente injetadas pelo Vite.
+
+*   **`src/components/`**
+    *   **Utilidade**: Contém os componentes React reutilizáveis da interface do usuário (ex: `InvestmentTable.tsx`, `PortfolioOverview.tsx`, `Header.tsx`, `Login.tsx`).
+
+*   **`src/data/`**
+    *   **Utilidade**: Armazena dados estáticos ou de configuração local para a aplicação (ex: `assetMetadata.ts`, `portfolioData.ts`, `tickerMapping.ts`).
+
+*   **`src/hooks/`**
+    *   **Utilidade**: Contém hooks React personalizados para encapsular lógica de estado e comportamento reutilizável (ex: `useInvestmentData.ts`, `usePortfolioStore.ts`).
+
+*   **`src/lib/`**
+    *   **Utilidade**: Geralmente contém bibliotecas ou configurações de terceiros, como a inicialização do cliente Supabase (`supabase.ts`).
+
+*   **`src/services/`**
+    *   **Utilidade**: Contém a lógica de negócio e a comunicação com APIs e o backend (ex: `authService.ts`, `investmentService.ts`, `marketApi.ts`, `voiceCommandService.ts`).
+
+*   **`src/styles/`**
+    *   **Utilidade**: Pode conter arquivos CSS específicos para módulos ou componentes, além dos estilos globais.
+
+*   **`src/types/`**
+    *   **Utilidade**: Define as interfaces e tipos TypeScript personalizados usados em toda a aplicação (ex: `investment.ts`, `supabase.ts`).
+
+*   **`src/utils/`**
+    *   **Utilidade**: Contém funções utilitárias e helpers genéricos que podem ser usados em várias partes da aplicação (ex: `precisionCalc.ts`, `assetType.ts`).
+
+---
+
+## 3. Diretório `supabase/` (Configuração e Funções do Supabase)
+
+Contém os arquivos de configuração e o código das Edge Functions que interagem com o backend Supabase.
+
+*   **`supabase/config.toml`**
+    *   **Utilidade**: Arquivo de configuração principal da CLI do Supabase para o projeto. Define configurações para API, banco de dados, autenticação, armazenamento e Edge Functions (mas **não** os agendamentos de cron jobs, que são feitos via SQL).
+
+*   **`supabase/functions/`**
+    *   **Utilidade**: Este diretório contém todas as suas Edge Functions. Cada subdiretório dentro dele representa uma função individual (ex: `ingest-news-cron/`, `master-router/`).
+    *   **`supabase/functions/_shared/`**
+        *   **Utilidade**: Contém código TypeScript que pode ser compartilhado entre diferentes Edge Functions para evitar duplicação (ex: clientes Supabase, helpers de CORS, serviços de embedding). Embora algumas funções tenham sido modificadas para incluir dependências diretamente para maior robustez, este diretório ainda pode conter utilitários.
+    *   **`supabase/functions/<nome_da_funcao>/index.ts`**
+        *   **Utilidade**: O arquivo principal de cada Edge Function, contendo a lógica de negócio que é executada no ambiente de Edge do Supabase.
+
+*   **`supabase/migrations/`**
+    *   **Utilidade**: Contém os arquivos de migração SQL que definem as alterações no schema do seu banco de dados Supabase ao longo do tempo. Cada arquivo representa uma versão das alterações do banco de dados.
+
+---
+
+## 4. Diretório `tests/`
+
+*   **`tests/setup.ts`**
+    *   **Utilidade**: Arquivo de configuração para o ambiente de testes, geralmente para configurar bibliotecas de teste ou mocks.
+
+*   **`tests/<nome_do_teste>.ts`**
+    *   **Utilidade**: Contém os testes unitários e de integração para o código da aplicação ou das funções Edge.
+
+---
+
+Este guia fornece uma visão abrangente dos arquivos locais que são cruciais para o desenvolvimento, implantação e funcionamento do sistema Erasmo Invest.
