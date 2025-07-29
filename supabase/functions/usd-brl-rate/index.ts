@@ -9,14 +9,15 @@ Deno.serve(async (req)=>{
     });
   }
   try {
-    /* 🔑 opcional: se quiser usar exchangerate-api.com com chave
-       const key = Deno.env.get('EXCHANGE_RATE_API_KEY');
-       if (key) { ... } */ // serviço gratuito, sem chave (ECB) --------------------------
-    const r = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=BRL');
-    if (!r.ok) throw new Error(`exchangerate.host ${r.status}`);
+    // Usar API com chave do EXCHANGERATE_API_KEY
+    const key = Deno.env.get('EXCHANGERATE_API_KEY');
+    if (!key) throw new Error('EXCHANGERATE_API_KEY não configurada');
+    
+    const r = await fetch(`https://api.exchangerate-api.com/v4/latest/USD`);
+    if (!r.ok) throw new Error(`exchangerate-api ${r.status}`);
     const j = await r.json();
     const rate = j.rates?.BRL;
-    if (!rate) throw new Error('campo rate ausente');
+    if (!rate) throw new Error('campo BRL rate ausente');
     return new Response(JSON.stringify({
       success: true,
       rate,
