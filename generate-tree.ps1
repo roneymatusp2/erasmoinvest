@@ -55,11 +55,11 @@ function Get-ProjectTree {
             $isLast = ($i -eq ($Items.Count - 1))
 
             if ($isLast) {
-                $currentPrefix = "+-- "
+                $currentPrefix = "└── "
                 $nextPrefix = $Prefix + "    "
             } else {
-                $currentPrefix = "|-- "
-                $nextPrefix = $Prefix + "|   "
+                $currentPrefix = "├── "
+                $nextPrefix = $Prefix + "│   "
             }
 
             if ($item.PSIsContainer) {

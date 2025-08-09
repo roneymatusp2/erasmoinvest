@@ -153,21 +153,43 @@ export const portfolioService = {
 
     try {
       console.log('🔄 [CORE] Buscando dados do Supabase e taxa de câmbio...');
-      const [portfoliosFromRPC, metadata, usdToBrlRate] = await Promise.all([
+      const [portfoliosFromRPC, metadata, usdToBrlRate, rawInvestments] = await Promise.all([
         investmentService.getAll(userId),
         assetMetadataService.getAll(),
         marketApiService.getUSDBRLExchangeRate(),
+        // Carrega também todos os investimentos brutos para anexar por ticker
+        investmentService.fetchAllRaw(userId),
       ]);
 
       console.log(`📊 [CORE] Dados recebidos: ${portfoliosFromRPC.length} portfólios`);
       console.log(`💲 [CORE] Taxa de câmbio USD-BRL: ${usdToBrlRate}`);
       console.log(`📝 [CORE] Metadados carregados: ${metadata.length} ativos`);
+      console.log(`📜 [CORE] Investimentos brutos carregados: ${rawInvestments.length}`);
+
+      // Agrupar investimentos por ticker (case-insensitive)
+      const investmentsByTicker = rawInvestments.reduce<Record<string, any[]>>((acc, inv: any) => {
+        const t = (inv.ticker || '').toUpperCase();
+        if (!t) return acc;
+        if (!acc[t]) acc[t] = [];
+        acc[t].push(inv);
+        return acc;
+      }, {});
 
       const portfoliosWithMetadata = portfoliosFromRPC.map(p => {
         const meta = metadata.find(m => m.ticker === p.ticker);
         const totalProventos = p.totalDividends + p.totalJuros;
         const totalYield = p.totalInvested > 0 ? (totalProventos / p.totalInvested) * 100 : 0;
-        return { ...p, metadata: (meta || createAutoMetadata(p.ticker)) as AssetMetadata, totalYield };
+        // Garante que a tela por ativo tenha as operações necessárias
+        const mergedInvestments = (p.investments && p.investments.length > 0)
+          ? p.investments
+          : (investmentsByTicker[p.ticker.toUpperCase()] || []);
+
+        return { 
+          ...p, 
+          metadata: (meta || createAutoMetadata(p.ticker)) as AssetMetadata, 
+          totalYield,
+          investments: mergedInvestments,
+        };
       });
 
       console.log('💹 [CORE] Buscando dados de mercado para todos os ativos...');
