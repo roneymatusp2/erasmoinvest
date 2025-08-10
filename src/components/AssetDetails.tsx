@@ -36,6 +36,7 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
 }) => {
   const [marketData, setMarketData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [usdToBrl, setUsdToBrl] = useState<number>(1);
 
   // 🚨 DESABILITADO TEMPORARIAMENTE - Evitar piscar infinito
   useEffect(() => {
@@ -53,17 +54,23 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
 
     // Buscar dados de mercado apenas uma vez ao montar
     fetchMarketData();
+    // Buscar taxa de câmbio USD->BRL para exibição padronizada
+    marketApiService.getUSDBRLExchangeRate()
+      .then((rate) => { if (rate && rate > 0) setUsdToBrl(rate); })
+      .catch(() => {});
     
     // ✅ INTERVALO REMOVIDO - Evita piscar constante
     // const interval = setInterval(fetchMarketData, 30000);
     // return () => clearInterval(interval);
   }, [metadata.ticker]);
 
-  // 💰 CALCULAR VALORES REAIS
-  // Usar marketData se disponível, senão usar valores do portfolio
-  const currentMarketValue = marketData 
-    ? currentPosition * marketData.currentPrice 
-    : (portfolioMarketValue || (currentPosition * (portfolioCurrentPrice || 0)));
+  // 💰 CALCULAR VALORES REAIS (sempre exibir em BRL)
+  const rawPrice = marketData ? marketData.currentPrice : (portfolioCurrentPrice || 0);
+  const rawCurrency = marketData?.currency || (metadata.moeda || 'BRL');
+  const displayPriceBRL = rawCurrency === 'USD' ? rawPrice * usdToBrl : rawPrice;
+  const currentMarketValue = (metadata.moeda === 'USD' || rawCurrency === 'USD')
+    ? currentPosition * displayPriceBRL
+    : (marketData ? currentPosition * rawPrice : (portfolioMarketValue || (currentPosition * rawPrice)));
   const totalProfit = currentMarketValue - totalInvested;
   const profitPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
   const isProfit = totalProfit >= 0;
@@ -75,8 +82,8 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
     return parts.join(',');
   };
 
-  const formatCurrency = (value: number, currency = 'BRL') => {
-    const symbol = currency === 'USD' ? '$' : 'R$';
+  const formatCurrency = (value: number) => {
+    const symbol = 'R$';
     return `${symbol} ${Math.abs(value).toLocaleString('pt-BR', { 
       minimumFractionDigits: 2, 
       maximumFractionDigits: 2 
@@ -169,7 +176,7 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
             ) : marketData ? (
               <div>
                 <div className="text-3xl font-bold text-white mb-1">
-                  {formatCurrency(marketData.currentPrice, marketData.currency)}
+                  {formatCurrency(displayPriceBRL)}
                 </div>
                 <div className={`flex items-center justify-end space-x-1 text-sm ${
                   marketData.priceChangePercent >= 0 ? 'text-green-400' : 'text-red-400'
@@ -185,7 +192,7 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
             ) : portfolioCurrentPrice ? (
               <div>
                 <div className="text-3xl font-bold text-white mb-1">
-                  {formatCurrency(portfolioCurrentPrice, metadata.moeda || 'BRL')}
+                  {formatCurrency(metadata.moeda === 'USD' ? portfolioCurrentPrice * usdToBrl : portfolioCurrentPrice)}
                 </div>
                 <div className="text-sm text-slate-400">
                   Preço médio do portfolio
@@ -228,13 +235,13 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
               <span className="text-sm text-slate-400">Valor se Vender Tudo</span>
             </div>
             <div className="text-lg font-bold text-white">
-              {formatCurrency(currentMarketValue, marketData?.currency)}
+              {formatCurrency(currentMarketValue)}
             </div>
             <div className="text-xs text-slate-500">
               {marketData ? 
-                `${currentPosition.toLocaleString('pt-BR')} × ${formatCurrency(marketData.currentPrice, marketData.currency)}` : 
+                `${currentPosition.toLocaleString('pt-BR')} × ${formatCurrency(displayPriceBRL)}` : 
                 portfolioCurrentPrice ? 
-                  `${currentPosition.toLocaleString('pt-BR')} × ${formatCurrency(portfolioCurrentPrice, metadata.moeda || 'BRL')}` :
+                  `${currentPosition.toLocaleString('pt-BR')} × ${formatCurrency(metadata.moeda === 'USD' ? portfolioCurrentPrice * usdToBrl : portfolioCurrentPrice)}` :
                   'Aguardando preço de mercado...'}
             </div>
           </div>
@@ -252,7 +259,7 @@ const AssetDetails: React.FC<AssetDetailsProps> = ({
               </span>
             </div>
             <div className={`text-lg font-bold ${isProfit ? 'text-green-400' : 'text-red-400'}`}>
-              {isProfit ? '+' : '-'}{formatCurrency(Math.abs(totalProfit), marketData?.currency)}
+              {isProfit ? '+' : '-'}{formatCurrency(Math.abs(totalProfit))}
             </div>
             <div className={`text-xs ${isProfit ? 'text-green-500' : 'text-red-500'}`}>
               {formatPercent(profitPercent)}

@@ -92,7 +92,6 @@ import {
     ZoomIn,
     ZoomOut,
     Grid3X3,
-    Map,
     BarChart4,
     Gauge,
     TrendingFlat as TrendingFlatIcon,
@@ -838,10 +837,34 @@ const IndividualAssetAnalysis: React.FC<{
             profitPercent,
             totalDividends,
             dividendYield,
-            quantity: asset.quantidade || 0,
-            averagePrice: asset.quantidade > 0 ? totalInvested / asset.quantidade : 0
+            quantity: asset.currentPosition || 0,
+            averagePrice: (asset.currentPosition || 0) > 0 ? Math.abs(totalInvested) / (asset.currentPosition || 0) : 0
         };
     }, [asset]);
+
+    const isTesouroDireto = useMemo(() => {
+        const tipo = asset.metadata?.tipo || '';
+        return tipo === 'TESOURO_DIRETO';
+    }, [asset]);
+
+    // Para Tesouro Direto: estimar taxa implícita (CAGR) com base em investido x valor atual e tempo de posição
+    const tesouroImplicitRate = useMemo(() => {
+        if (!isTesouroDireto) return null;
+        try {
+            const ops = (rawInvestments || []).filter((inv: any) => (inv.ticker || '').toUpperCase() === asset.ticker.toUpperCase());
+            if (ops.length === 0) return null;
+            const firstDate = new Date(ops[0].date);
+            const today = new Date();
+            const years = Math.max(0.01, (today.getTime() - firstDate.getTime()) / (365 * 24 * 60 * 60 * 1000));
+            const investedAbs = Math.abs(asset.totalInvested || 0);
+            const current = asset.marketValue || investedAbs;
+            if (investedAbs <= 0 || current <= 0) return null;
+            const cagr = Math.pow(current / investedAbs, 1 / years) - 1;
+            return cagr;
+        } catch {
+            return null;
+        }
+    }, [isTesouroDireto, rawInvestments, asset]);
 
     return (
         <motion.div
@@ -895,7 +918,7 @@ const IndividualAssetAnalysis: React.FC<{
                     change={assetMetrics.profitPercent}
                     icon={<DollarSign className="h-6 w-6 text-white" />}
                     color="from-indigo-600 to-purple-600"
-                    subtitle={`${assetMetrics.quantity} unidades`}
+                    subtitle={`${assetMetrics.quantity.toLocaleString('pt-BR')} ${isTesouroDireto ? 'títulos' : 'cotas'}`}
                 />
                 <EnhancedMetricCard
                     title="Lucro/Prejuízo"
@@ -912,13 +935,35 @@ const IndividualAssetAnalysis: React.FC<{
                     color="from-amber-600 to-orange-600"
                     subtitle={`DY: ${assetMetrics.dividendYield.toFixed(2)}%`}
                 />
-                <EnhancedMetricCard
-                    title="Preço Médio"
-                    value={`R$ ${assetMetrics.averagePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                    icon={<BarChart3 className="h-6 w-6 text-white" />}
-                    color="from-cyan-600 to-blue-600"
-                    subtitle={`Investido: R$ ${assetMetrics.totalInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                />
+                {isTesouroDireto ? (
+                    <EnhancedMetricCard
+                        title="PU Atual"
+                        value={`R$ ${((asset.currentPrice && asset.currentPrice > 0)
+                            ? asset.currentPrice
+                            : (assetMetrics.quantity > 0 ? assetMetrics.marketValue / assetMetrics.quantity : 0)
+                        ).toLocaleString('pt-BR', { minimumFractionDigits: 4 })}`}
+                        icon={<BarChart3 className="h-6 w-6 text-white" />}
+                        color="from-cyan-600 to-blue-600"
+                        subtitle={`Baseado no valor atual • Investido: R$ ${assetMetrics.totalInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                    />
+                ) : (
+                    <EnhancedMetricCard
+                        title="Preço Médio"
+                        value={`R$ ${assetMetrics.averagePrice.toLocaleString('pt-BR', { minimumFractionDigits: 4 })}`}
+                        icon={<BarChart3 className="h-6 w-6 text-white" />}
+                        color="from-cyan-600 to-blue-600"
+                        subtitle={`Investido: R$ ${assetMetrics.totalInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                    />
+                )}
+                {isTesouroDireto && (
+                    <EnhancedMetricCard
+                        title="Taxa Implícita (a.a.)"
+                        value={tesouroImplicitRate !== null ? `${(tesouroImplicitRate * 100).toFixed(2)}%` : '--'}
+                        icon={<Percent className="h-6 w-6 text-white" />}
+                        color="from-emerald-600 to-green-600"
+                        subtitle={tesouroImplicitRate !== null ? 'Estimativa via CAGR do período' : 'Sem histórico suficiente'}
+                    />
+                )}
             </div>
 
             {/* Charts */}
@@ -1568,7 +1613,22 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
     // Estados originais mantidos
     const [isLoading, setIsLoading] = useState(true);
     const [selectedView, setSelectedView] = useState<'overview' | 'performance' | 'allocation' | 'income' | 'risk'>('overview');
-    const [timeRange, setTimeRange] = useState<'1M' | '3M' | '6M' | '1Y' | 'ALL'>('1Y');
+    // Controles individuais por gráfico (timeline de performance)
+    const [performanceTimeRange, setPerformanceTimeRange] = useState<'1M' | '3M' | '6M' | '1Y' | 'ALL'>('1Y');
+    const [performanceGranularity, setPerformanceGranularity] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('MONTHLY');
+    const [performanceStartDate, setPerformanceStartDate] = useState<string>('');
+    const [performanceEndDate, setPerformanceEndDate] = useState<string>('');
+
+    // Controles individuais por gráfico (timeline de proventos)
+    const [incomeTimeRange, setIncomeTimeRange] = useState<'1M' | '3M' | '6M' | '1Y' | 'ALL'>('1Y');
+    const [incomeGranularity, setIncomeGranularity] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('MONTHLY');
+    const [incomeStartDate, setIncomeStartDate] = useState<string>('');
+    const [incomeEndDate, setIncomeEndDate] = useState<string>('');
+
+    // Controles individuais por gráfico (TWR vs Índices)
+    const [wrcGranularity, setWrcGranularity] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('MONTHLY');
+    const [wrcStartDate, setWrcStartDate] = useState<string>('');
+    const [wrcEndDate, setWrcEndDate] = useState<string>('');
     const [showAdvancedMetrics, setShowAdvancedMetrics] = useState(false);
     const [explanation, setExplanation] = useState<{title: string, content: string, isLoading: boolean}>({title: '', content: '', isLoading: false});
     const [isExplaining, setIsExplaining] = useState<string>('');
@@ -1808,15 +1868,120 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
             month.profit = month.value - month.invested;
         });
 
-        const getMonths = (n: number) => allMonths.slice(-n);
-        switch (timeRange) {
-            case '1M': return getMonths(2);
-            case '3M': return getMonths(4);
-            case '6M': return getMonths(7);
-            case '1Y': return getMonths(13);
-            case 'ALL': default: return allMonths;
+        // Função auxiliar: expandir mensal -> diário por interpolação linear
+        const expandMonthlyToDaily = (months: typeof allMonths) => {
+            const result: Array<{ month: string; monthLabel: string; invested: number; value: number; income: number; profit: number }> = [];
+            for (let i = 0; i < months.length - 1; i++) {
+                const a = months[i];
+                const b = months[i + 1];
+                const start = new Date(a.month + '-01');
+                const end = new Date(b.month + '-01');
+                // último dia do mês A
+                const lastDayA = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+                // número de dias entre o fim de A e o fim de B
+                const days = Math.max(1, Math.round((end.getTime() - lastDayA.getTime()) / (24 * 60 * 60 * 1000)));
+                for (let d = 0; d < days; d++) {
+                    const t = d / days;
+                    const inv = a.invested + (b.invested - a.invested) * t;
+                    const val = a.value + (b.value - a.value) * t;
+                    const inc = a.income + (b.income - a.income) * t;
+                    const current = new Date(lastDayA.getTime() + d * 24 * 60 * 60 * 1000);
+                    const iso = current.toISOString().substring(0, 10);
+                    result.push({
+                        month: iso,
+                        monthLabel: current.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+                        invested: inv,
+                        value: val,
+                        income: inc,
+                        profit: val - inv,
+                    });
+                }
+            }
+            // incluir último ponto como dia final
+            if (months.length > 0) {
+                const lastMonth = months[months.length - 1];
+                const lastDate = new Date(lastMonth.month + '-01');
+                const iso = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, 0).toISOString().substring(0, 10);
+                result.push({
+                    month: iso,
+                    monthLabel: new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+                    invested: lastMonth.invested,
+                    value: lastMonth.value,
+                    income: lastMonth.income,
+                    profit: lastMonth.value - lastMonth.invested,
+                });
+            }
+            return result;
+        };
+
+        // Filtrar por intervalo customizado (se fornecido)
+        const applyRange = <T extends { month?: string; date?: string }>(arr: T[]) => {
+            if (!performanceStartDate && !performanceEndDate) return arr;
+            const startTs = performanceStartDate ? new Date(performanceStartDate).getTime() : -Infinity;
+            const endTs = performanceEndDate ? new Date(performanceEndDate).getTime() : Infinity;
+            return arr.filter((p: any) => {
+                const key = p.month ? p.month : (p.monthKey ? p.monthKey + '-01' : '');
+                if (!key) return true;
+                const ts = new Date(key).getTime();
+                return ts >= startTs && ts <= endTs;
+            });
+        };
+
+        // Seleção rápida por período quando não há intervalo customizado
+        let baseMonths = allMonths;
+        if (!performanceStartDate && !performanceEndDate) {
+            const getMonths = (n: number) => allMonths.slice(-n);
+            switch (performanceTimeRange) {
+                case '1M': baseMonths = getMonths(2); break;
+                case '3M': baseMonths = getMonths(4); break;
+                case '6M': baseMonths = getMonths(7); break;
+                case '1Y': baseMonths = getMonths(13); break;
+                case 'ALL': default: baseMonths = allMonths; break;
+            }
         }
-    }, [rawInvestments, mainMetrics, timeRange]);
+
+        if (performanceGranularity === 'MONTHLY') {
+            return applyRange(baseMonths) as any;
+        }
+
+        // Expandir p/ diário e posteriormente agregar por semana se necessário
+        const daily = expandMonthlyToDaily(baseMonths);
+        const rangedDaily = applyRange(daily);
+
+        if (performanceGranularity === 'DAILY') {
+            return rangedDaily as any;
+        }
+
+        // Agregar por semana (ISO week: usar segunda-feira como início)
+        const weekKey = (d: Date) => {
+            const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+            const dayNum = date.getUTCDay() || 7;
+            date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+            const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+            return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+        };
+
+        const weeklyMap = new Map<string, { invested: number; value: number; income: number; count: number }>();
+        rangedDaily.forEach(p => {
+            const k = weekKey(new Date(p.month));
+            const agg = weeklyMap.get(k) || { invested: 0, value: 0, income: 0, count: 0 };
+            agg.invested += p.invested;
+            agg.value += p.value;
+            agg.income += p.income;
+            agg.count += 1;
+            weeklyMap.set(k, agg);
+        });
+
+        const weekly = Array.from(weeklyMap.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => {
+            const [y, w] = k.split('-W');
+            const label = `Sem ${w}/${y}`;
+            const invested = v.invested / Math.max(1, v.count);
+            const value = v.value / Math.max(1, v.count);
+            return { month: k, monthLabel: label, invested, value, income: v.income, profit: value - invested } as any;
+        });
+        return weekly as any;
+    }, [rawInvestments, mainMetrics, performanceTimeRange, performanceGranularity, performanceStartDate, performanceEndDate]);
 
     // Dados de comparação com benchmarks
     const benchmarkComparison = useMemo(() => {
@@ -1824,7 +1989,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
 
         const portfolioStartValue = performanceTimeline[0]?.invested || 1;
 
-        return performanceTimeline.map(point => {
+        const monthly = performanceTimeline.map(point => {
             const portfolioReturn = ((point.value - portfolioStartValue) / portfolioStartValue) * 100;
             const result: any = {
                 month: point.month,
@@ -1844,6 +2009,54 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
 
             return result;
         });
+
+        // aplicar granularidade/datas iguais às de performance
+        const applyRange = (arr: any[]) => {
+            const start = performanceStartDate ? new Date(performanceStartDate).getTime() : -Infinity;
+            const end = performanceEndDate ? new Date(performanceEndDate).getTime() : Infinity;
+            if (start === -Infinity && end === Infinity) return arr;
+            return arr.filter(p => new Date(p.month + '-01').getTime() >= start && new Date(p.month + '-01').getTime() <= end);
+        };
+        if (performanceGranularity === 'MONTHLY') return applyRange(monthly);
+
+        // expandir -> diário
+        const expandMonthly = (months: any[]) => {
+            const daily: any[] = [];
+            for (let i = 0; i < months.length - 1; i++) {
+                const a = months[i]; const b = months[i+1];
+                const start = new Date(a.month + '-01');
+                const end = new Date(b.month + '-01');
+                const lastDayA = new Date(start.getFullYear(), start.getMonth()+1, 0);
+                const days = Math.max(1, Math.round((end.getTime()-lastDayA.getTime())/86400000));
+                for (let d=0; d<days; d++){
+                    const t = d/days; const date = new Date(lastDayA.getTime()+d*86400000);
+                    const label = date.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});
+                    const lerp = (x:number,y:number)=>x+(y-x)*t;
+                    daily.push({ month: date.toISOString().substring(0,10), monthLabel: label, portfolio: lerp(a.portfolio,b.portfolio) });
+                }
+            }
+            return daily;
+        };
+
+        const daily = applyRange(expandMonthly(monthly));
+        if (performanceGranularity === 'DAILY') return daily;
+
+        // semanal
+        const weeklyMap = new Map<string,{sum:number,count:number}>();
+        daily.forEach(p=>{
+            const d = new Date(p.month); const dayNum = (d.getUTCDay()||7);
+            const base = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+            base.setUTCDate(base.getUTCDate()+4-dayNum);
+            const yearStart = new Date(Date.UTC(base.getUTCFullYear(),0,1));
+            const weekNo = Math.ceil((((base.getTime()-yearStart.getTime())/86400000)+1)/7);
+            const key = `${base.getUTCFullYear()}-W${String(weekNo).padStart(2,'0')}`;
+            const acc = weeklyMap.get(key)||{sum:0,count:0}; acc.sum+=p.portfolio; acc.count++; weeklyMap.set(key,acc);
+        });
+        return Array.from(weeklyMap.entries()).map(([k,v])=>({
+            month:k,
+            monthLabel:`Sem ${k.split('W')[1]}/${k.split('-W')[0]}`,
+            portfolio: v.sum/Math.max(1,v.count)
+        })).sort((a,b)=>a.month.localeCompare(b.month));
     }, [performanceTimeline, benchmarkData]);
 
     // Dados de rentabilidade ponderada comparada com índices
@@ -1915,7 +2128,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
             'IVVB11': '#8b5cf6'     // roxo
         };
 
-        return weightedReturnData.map(point => {
+        const monthly = weightedReturnData.map(point => {
             const result: any = {
                 date: point.date,
                 monthLabel: point.monthLabel,
@@ -1934,7 +2147,71 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
 
             return result;
         });
-    }, [weightedReturnData]);
+
+        // Helper para aplicar intervalo customizado
+        const applyRange = (arr: any[]) => {
+            if (!wrcStartDate && !wrcEndDate) return arr;
+            const startTs = wrcStartDate ? new Date(wrcStartDate).getTime() : -Infinity;
+            const endTs = wrcEndDate ? new Date(wrcEndDate).getTime() : Infinity;
+            return arr.filter(p => new Date(p.date + '-01').getTime() >= startTs && new Date(p.date + '-01').getTime() <= endTs);
+        };
+
+        if (wrcGranularity === 'MONTHLY') return applyRange(monthly);
+
+        // Expandir mensal -> diário por interpolação linear simples do retorno acumulado
+        const expandMonthly = (months: any[]) => {
+            const daily: any[] = [];
+            for (let i = 0; i < months.length - 1; i++) {
+                const a = months[i];
+                const b = months[i + 1];
+                const start = new Date(a.date + '-01');
+                const end = new Date(b.date + '-01');
+                const lastDayA = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+                const days = Math.max(1, Math.round((end.getTime() - lastDayA.getTime()) / 86400000));
+                for (let d = 0; d < days; d++) {
+                    const t = d / days;
+                    const date = new Date(lastDayA.getTime() + d * 86400000);
+                    const label = date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+                    const lerp = (x: number, y: number) => x + (y - x) * t;
+                    const row: any = { month: date.toISOString().substring(0,10), monthLabel: label };
+                    row.rentabilidadePonderada = lerp(a.rentabilidadePonderada, b.rentabilidadePonderada);
+                    ['IPCA','CDI','IBOV','SMLL','SPX','IDIV','IVVB11'].forEach(k => row[k] = lerp(a[k], b[k]));
+                    daily.push(row);
+                }
+            }
+            return daily;
+        };
+
+        const daily = applyRange(expandMonthly(monthly));
+        if (wrcGranularity === 'DAILY') return daily;
+
+        // Agregar por semana
+        const weeklyMap = new Map<string, any>();
+        daily.forEach(p => {
+            const d = new Date(p.month);
+            const dayNum = (d.getUTCDay() || 7);
+            const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+            date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+            const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+            const key = `${date.getUTCFullYear()}-W${String(weekNo).padStart(2,'0')}`;
+            const acc = weeklyMap.get(key) || { count: 0 };
+            const keys = ['rentabilidadePonderada','IPCA','CDI','IBOV','SMLL','SPX','IDIV','IVVB11'];
+            keys.forEach(k => acc[k] = (acc[k] || 0) + p[k]);
+            acc.count += 1; weeklyMap.set(key, acc);
+        });
+        const weekly = Array.from(weeklyMap.entries()).map(([k,v]) => {
+            const avg = (n: number) => n / Math.max(1, v.count);
+            const label = `Sem ${k.split('W')[1]}/${k.split('-W')[0]}`;
+            return {
+                date: k,
+                monthLabel: label,
+                rentabilidadePonderada: avg(v.rentabilidadePonderada),
+                IPCA: avg(v.IPCA), CDI: avg(v.CDI), IBOV: avg(v.IBOV), SMLL: avg(v.SMLL), SPX: avg(v.SPX), IDIV: avg(v.IDIV), IVVB11: avg(v.IVVB11)
+            };
+        }).sort((a,b)=>a.date.localeCompare(b.date));
+        return weekly;
+    }, [weightedReturnData, wrcGranularity, wrcStartDate, wrcEndDate]);
 
     // Função para mapear setores - movida para fora do useMemo para reutilização
     const getSectorFromTicker = useCallback((ticker: string, metadata?: any) => {
@@ -2621,21 +2898,50 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                     exit={{ opacity: 0, y: -20 }}
                                     className="space-y-6"
                                 >
-                                    {/* Seletor de período */}
-                                    <div className="flex justify-end gap-2">
-                                        {['1M', '3M', '6M', '1Y', 'ALL'].map(range => (
-                                            <button
-                                                key={range}
-                                                onClick={() => setTimeRange(range as any)}
-                                                className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                                                    timeRange === range
-                                                        ? 'bg-indigo-600 text-white'
-                                                        : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50'
-                                                }`}
-                                            >
-                                                {range}
-                                            </button>
-                                        ))}
+                                    {/* Filtros de período e granularidade (somente para este gráfico) */}
+                                    <div className="flex flex-wrap items-end justify-between gap-3">
+                                        <div className="flex gap-2">
+                                            {['1M', '3M', '6M', '1Y', 'ALL'].map(range => (
+                                                <button
+                                                    key={range}
+                                                    onClick={() => { setPerformanceTimeRange(range as any); setPerformanceStartDate(''); setPerformanceEndDate(''); }}
+                                                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                                        performanceTimeRange === range && !performanceStartDate && !performanceEndDate
+                                                            ? 'bg-indigo-600 text-white'
+                                                            : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50'
+                                                    }`}
+                                                >
+                                                    {range}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <div className="flex items-end gap-3">
+                                            <div>
+                                                <label className="block text-xs text-gray-400 mb-1">Granularidade</label>
+                                                <select
+                                                    value={performanceGranularity}
+                                                    onChange={(e) => setPerformanceGranularity(e.target.value as any)}
+                                                    className="appearance-none bg-gray-800/50 border border-gray-600 rounded-lg px-3 py-2 pr-8 text-sm text-white"
+                                                >
+                                                    <option value="DAILY">Diário</option>
+                                                    <option value="WEEKLY">Semanal</option>
+                                                    <option value="MONTHLY">Mensal</option>
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs text-gray-400 mb-1">De</label>
+                                                <input type="date" value={performanceStartDate} onChange={(e)=>setPerformanceStartDate(e.target.value)} className="bg-gray-800/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-gray-400 mb-1">Até</label>
+                                                <input type="date" value={performanceEndDate} onChange={(e)=>setPerformanceEndDate(e.target.value)} className="bg-gray-800/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white" />
+                                            </div>
+                                            {(performanceStartDate || performanceEndDate) && (
+                                                <button onClick={()=>{ setPerformanceStartDate(''); setPerformanceEndDate(''); }} className="px-3 py-2 bg-slate-700/60 text-slate-200 rounded-lg text-sm">Limpar</button>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Gráfico de Performance */}
@@ -2650,9 +2956,9 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                 isLoading={isExplaining === 'performance-timeline'}
                                             />
                                         </div>
-                                        <div className="h-96">
-                                            <ResponsiveContainer>
-                                                <ComposedChart data={performanceTimeline}>
+                                            <div className="h-96">
+                                                <ResponsiveContainer>
+                                                    <ComposedChart data={performanceTimeline}>
                                                     <defs>
                                                         <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                                                             <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/>
@@ -2712,6 +3018,23 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                     onClick={() => handleExplainChart('Comparação com Benchmarks', benchmarkComparison, 'benchmark-comparison')}
                                                     isLoading={isExplaining === 'benchmark-comparison'}
                                                 />
+                                            </div>
+                                            {/* Controles herdando granularidade/intervalo da seção Performance */}
+                                            <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+                                                <div className="text-xs text-gray-400">Granularidade: {performanceGranularity === 'DAILY' ? 'Diário' : performanceGranularity === 'WEEKLY' ? 'Semanal' : 'Mensal'}</div>
+                                                <div className="flex items-end gap-3">
+                                                    <div>
+                                                        <label className="block text-xs text-gray-400 mb-1">De</label>
+                                                        <input type="date" value={performanceStartDate} onChange={(e)=>setPerformanceStartDate(e.target.value)} className="bg-gray-800/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"/>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs text-gray-400 mb-1">Até</label>
+                                                        <input type="date" value={performanceEndDate} onChange={(e)=>setPerformanceEndDate(e.target.value)} className="bg-gray-800/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"/>
+                                                    </div>
+                                                    {(performanceStartDate||performanceEndDate) && (
+                                                        <button onClick={()=>{ setPerformanceStartDate(''); setPerformanceEndDate(''); }} className="px-3 py-2 bg-slate-700/60 text-slate-200 rounded-lg text-sm">Limpar</button>
+                                                    )}
+                                                </div>
                                             </div>
                                             <div className="h-96">
                                                 <ResponsiveContainer>
@@ -2838,8 +3161,8 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                     />
                                                 </div>
 
-                                                {/* Menus de filtro */}
-                                                <div className="flex flex-wrap gap-4 mb-4">
+                                                {/* Menus de filtro + granularidade/intervalo específicos */}
+                                                <div className="flex flex-wrap gap-4 mb-4 items-end justify-between">
                                                     {/* Menu de Período */}
                                                     <div className="relative">
                                                         <label className="block text-xs text-gray-400 mb-1">Período</label>
@@ -2857,6 +3180,29 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                             </select>
                                                             <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                                         </div>
+                                                    </div>
+
+                                                    {/* Granularidade e datas */}
+                                                    <div className="flex items-end gap-3">
+                                                        <div>
+                                                            <label className="block text-xs text-gray-400 mb-1">Granularidade</label>
+                                                            <select value={wrcGranularity} onChange={(e)=>setWrcGranularity(e.target.value as any)} className="appearance-none bg-gray-800/50 border border-gray-600 rounded-lg px-3 py-2 pr-8 text-sm text-white">
+                                                                <option value="DAILY">Diário</option>
+                                                                <option value="WEEKLY">Semanal</option>
+                                                                <option value="MONTHLY">Mensal</option>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs text-gray-400 mb-1">De</label>
+                                                            <input type="date" value={wrcStartDate} onChange={(e)=>setWrcStartDate(e.target.value)} className="bg-gray-800/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"/>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs text-gray-400 mb-1">Até</label>
+                                                            <input type="date" value={wrcEndDate} onChange={(e)=>setWrcEndDate(e.target.value)} className="bg-gray-800/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"/>
+                                                        </div>
+                                                        {(wrcStartDate || wrcEndDate) && (
+                                                            <button onClick={()=>{ setWrcStartDate(''); setWrcEndDate(''); }} className="px-3 py-2 bg-slate-700/60 text-slate-200 rounded-lg text-sm">Limpar</button>
+                                                        )}
                                                     </div>
 
                                                     {/* Menu de Tipo de Ativo */}
@@ -2891,6 +3237,7 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                 </div>
                                             </div>
 
+                                            {/* Controles próprios da seção já adicionados acima */}
                                             <div className="h-96">
                                                 <ResponsiveContainer>
                                                     <LineChart data={weightedReturnComparison}>
@@ -3496,9 +3843,39 @@ const UltraAdvancedChartsTab: React.FC<ChartsTabProps> = React.memo(({ portfolio
                                                 isLoading={isExplaining === 'income-timeline'}
                                             />
                                         </div>
-                                        <div className="h-96">
-                                            <ResponsiveContainer>
-                                                <AreaChart data={performanceTimeline || []}>
+                                        {/* Controles individuais para este gráfico de proventos */}
+                                        <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+                                            <div className="flex gap-2">
+                                                {['1M','3M','6M','1Y','ALL'].map(range => (
+                                                    <button key={range} onClick={()=>{ setIncomeTimeRange(range as any); setIncomeStartDate(''); setIncomeEndDate(''); }}
+                                                        className={`px-3 py-2 rounded-lg text-sm ${incomeTimeRange===range && !incomeStartDate && !incomeEndDate ? 'bg-emerald-600 text-white' : 'bg-gray-800/50 text-gray-300'}`}>{range}</button>
+                                                ))}
+                                            </div>
+                                            <div className="flex items-end gap-3">
+                                                <div>
+                                                    <label className="block text-xs text-gray-400 mb-1">Granularidade</label>
+                                                    <select value={incomeGranularity} onChange={(e)=>setIncomeGranularity(e.target.value as any)} className="appearance-none bg-gray-800/50 border border-gray-600 rounded-lg px-3 py-2 pr-8 text-sm text-white">
+                                                        <option value="DAILY">Diário</option>
+                                                        <option value="WEEKLY">Semanal</option>
+                                                        <option value="MONTHLY">Mensal</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-gray-400 mb-1">De</label>
+                                                    <input type="date" value={incomeStartDate} onChange={(e)=>setIncomeStartDate(e.target.value)} className="bg-gray-800/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"/>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-gray-400 mb-1">Até</label>
+                                                    <input type="date" value={incomeEndDate} onChange={(e)=>setIncomeEndDate(e.target.value)} className="bg-gray-800/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"/>
+                                                </div>
+                                                {(incomeStartDate||incomeEndDate) && (
+                                                    <button onClick={()=>{ setIncomeStartDate(''); setIncomeEndDate(''); }} className="px-3 py-2 bg-slate-700/60 text-slate-200 rounded-lg text-sm">Limpar</button>
+                                                )}
+                                            </div>
+                                        </div>
+                                            <div className="h-96">
+                                                <ResponsiveContainer>
+                                                    <AreaChart data={performanceTimeline || []}>
                                                     <defs>
                                                         <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
                                                             <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>

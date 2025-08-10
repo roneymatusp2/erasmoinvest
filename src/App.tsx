@@ -230,6 +230,21 @@ function App() {
         const currentDate = new Date().toLocaleDateString('pt-BR');
         const currentTime = new Date().toLocaleTimeString('pt-BR');
 
+        // ===== Helpers de estética / formato =====
+        const setNumberFormat = (ws: XLSX.WorkSheet, rangeRef: string, format: string) => {
+            if (!ws['!ref']) return;
+            const rg = XLSX.utils.decode_range(rangeRef);
+            for (let R = rg.s.r; R <= rg.e.r; ++R) {
+                for (let C = rg.s.c; C <= rg.e.c; ++C) {
+                    const addr = XLSX.utils.encode_cell({ r: R, c: C });
+                    const cell: any = ws[addr];
+                    if (cell && typeof cell.v !== 'undefined') {
+                        cell.z = format;
+                    }
+                }
+            }
+        };
+
         // ===========================================
         // ABA 1: PAINEL EXECUTIVO
         // ===========================================
@@ -254,34 +269,37 @@ function App() {
             return acc;
         }, {} as Record<string, typeof portfolios>);
 
-        Object.entries(groupedByType).forEach(([tipo, portfolioList]) => {
-            const totalInvested = portfolioList.reduce((sum, p) => sum + p.totalInvested, 0);
-            const totalMarket = portfolioList.reduce((sum, p) => sum + p.marketValue, 0);
-            const totalDividends = portfolioList.reduce((sum, p) => sum + p.totalDividends, 0);
-            const performance = totalInvested > 0 ? ((totalMarket - totalInvested) / totalInvested * 100) : 0;
-            const percentage = portfolios.reduce((sum, p) => sum + p.totalInvested, 0) > 0 ?
-                (totalInvested / portfolios.reduce((sum, p) => sum + p.totalInvested, 0) * 100) : 0;
-
+        Object.keys(groupedByType).forEach((tipo) => {
             dashboardData.push([
                 tipo,
-                portfolioList.length,
-                `R$ ${totalInvested.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-                `R$ ${totalMarket.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-                `R$ ${totalDividends.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-                `${performance.toFixed(2)}%`,
-                `${percentage.toFixed(1)}%`
-            ]);
+                { t: 'n', f: `COUNTIF('📋 Resumo Detalhado'!C:C,"${tipo}")` },
+                { t: 'n', f: `SUMIF('📋 Resumo Detalhado'!C:C,"${tipo}",'📋 Resumo Detalhado'!G:G)` },
+                { t: 'n', f: `SUMIF('📋 Resumo Detalhado'!C:C,"${tipo}",'📋 Resumo Detalhado'!H:H)` },
+                { t: 'n', f: `SUMIF('📋 Resumo Detalhado'!C:C,"${tipo}",'📋 Resumo Detalhado'!I:I)` },
+                { t: 'n', f: `IF(SUMIF('📋 Resumo Detalhado'!C:C,"${tipo}",'📋 Resumo Detalhado'!G:G)=0,0,(SUMIF('📋 Resumo Detalhado'!C:C,"${tipo}",'📋 Resumo Detalhado'!H:H)-SUMIF('📋 Resumo Detalhado'!C:C,"${tipo}",'📋 Resumo Detalhado'!G:G))/SUMIF('📋 Resumo Detalhado'!C:C,"${tipo}",'📋 Resumo Detalhado'!G:G))` },
+                { t: 'n', f: `IF(SUM('📋 Resumo Detalhado'!G:G)=0,0,SUMIF('📋 Resumo Detalhado'!C:C,"${tipo}",'📋 Resumo Detalhado'!G:G)/SUM('📋 Resumo Detalhado'!G:G))` }
+            ] as any);
         });
 
         const dashboardWS = XLSX.utils.aoa_to_sheet(dashboardData);
 
+        // Inserir fórmulas que referenciam a aba Resumo Detalhado
+        dashboardWS['B5'] = { t: 'n', f: "COUNTA('📋 Resumo Detalhado'!A:A)-4" } as any;
+        dashboardWS['E5'] = { t: 'n', f: "SUM('📋 Resumo Detalhado'!G:G)" } as any;
+        dashboardWS['B6'] = { t: 'n', f: "SUM('📋 Resumo Detalhado'!H:H)" } as any;
+        dashboardWS['E6'] = { t: 'n', f: "SUM('📋 Resumo Detalhado'!I:I)" } as any;
+        dashboardWS['E7'] = { t: 'n', f: "SUM('📋 Resumo Detalhado'!J:J)" } as any;
+        dashboardWS['B7'] = { t: 'n', f: "IF(SUM('📋 Resumo Detalhado'!G:G)=0,0,(SUM('📋 Resumo Detalhado'!H:H)-SUM('📋 Resumo Detalhado'!G:G))/SUM('📋 Resumo Detalhado'!G:G))" } as any;
+
         // Formatação do cabeçalho
-        const range = XLSX.utils.decode_range(dashboardWS['!ref']!);
         dashboardWS['!cols'] = [
             { wch: 20 }, { wch: 15 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 12 }
         ];
 
         XLSX.utils.book_append_sheet(workbook, dashboardWS, '📊 Painel Executivo');
+        // Formatação numérica do painel (linhas 5-7)
+        setNumberFormat(dashboardWS, XLSX.utils.encode_range({ r: 4, c: 1 }, { r: 6, c: 1 }), "R$ #,##0.00"); // B5..B7 (Valor Mercado e Rentab como nr bruto -> já fórmula) 
+        setNumberFormat(dashboardWS, XLSX.utils.encode_range({ r: 4, c: 4 }, { r: 6, c: 4 }), "R$ #,##0.00"); // E5..E7
 
         // ===========================================
         // ABA 2: RESUMO DETALHADO
@@ -300,13 +318,13 @@ function App() {
                 p.metadata?.tipo || 'N/A',
                 p.metadata?.pais || 'BRASIL',
                 p.metadata?.setor || 'N/A',
-                p.currentPosition.toLocaleString('pt-BR', {minimumFractionDigits: 0}),
-                `R$ ${p.totalInvested.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-                `R$ ${p.marketValue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-                `R$ ${p.totalDividends.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-                `R$ ${p.totalJuros.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-                `${p.totalYield.toFixed(2)}%`,
-                `${p.profitPercent.toFixed(2)}%`
+                p.currentPosition,                // número
+                p.totalInvested,                  // número
+                p.marketValue,                    // número
+                p.totalDividends,                 // número
+                p.totalJuros,                     // número
+                p.totalYield / 100,               // percent (0-1)
+                p.profitPercent / 100             // percent (0-1)
             ]);
         });
 
@@ -321,13 +339,13 @@ function App() {
         summaryData.push(['', '', '', '', '', '', '', '', '', '', '', '']);
         summaryData.push([
             'TOTAIS', '', '', '', '',
-            portfolios.reduce((sum, p) => sum + p.currentPosition, 0).toLocaleString('pt-BR'),
-            `R$ ${totalInvested.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-            `R$ ${totalMarket.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-            `R$ ${totalDividends.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-            `R$ ${totalJuros.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-            `${avgYield.toFixed(2)}%`,
-            `${totalProfit.toFixed(2)}%`
+            portfolios.reduce((sum, p) => sum + p.currentPosition, 0),
+            totalInvested,
+            totalMarket,
+            totalDividends,
+            totalJuros,
+            avgYield / 100,
+            totalProfit / 100
         ]);
 
         const summaryWS = XLSX.utils.aoa_to_sheet(summaryData);
@@ -337,6 +355,123 @@ function App() {
         ];
 
         XLSX.utils.book_append_sheet(workbook, summaryWS, '📋 Resumo Detalhado');
+        // AutoFiltro e formatação
+        const lastRow = summaryData.length;
+        (summaryWS as any)['!autofilter'] = { ref: `A4:L${lastRow}` } as any;
+        // Moeda: G,H,I,J | Percentual: K,L | Quantidade: F
+        setNumberFormat(summaryWS, XLSX.utils.encode_range({ r: 4, c: 5 }, { r: lastRow - 1, c: 5 }), "0");
+        setNumberFormat(summaryWS, XLSX.utils.encode_range({ r: 4, c: 6 }, { r: lastRow - 1, c: 9 }), "R$ #,##0.00");
+        setNumberFormat(summaryWS, XLSX.utils.encode_range({ r: 4, c: 10 }, { r: lastRow - 1, c: 11 }), "0.00%");
+
+        // ===========================================
+        // ABA 3: RESUMO POR SETOR (agregado)
+        // ===========================================
+        const sectorAgg: Record<string, { count: number; invested: number; market: number; dividends: number; juros: number }>
+          = {};
+        portfolios.forEach(p => {
+            const sector = p.metadata?.setor || 'N/A';
+            if (!sectorAgg[sector]) sectorAgg[sector] = { count: 0, invested: 0, market: 0, dividends: 0, juros: 0 };
+            sectorAgg[sector].count += 1;
+            sectorAgg[sector].invested += p.totalInvested;
+            sectorAgg[sector].market += p.marketValue;
+            sectorAgg[sector].dividends += p.totalDividends;
+            sectorAgg[sector].juros += p.totalJuros;
+        });
+        const sectorRows = Object.entries(sectorAgg)
+            .map(([sector, v]) => ({ sector, ...v, perf: v.invested > 0 ? (v.market - v.invested) / v.invested : 0 }))
+            .sort((a, b) => b.market - a.market);
+
+        const sectorSheet = [
+            ['ERASMO INVEST - RESUMO POR SETOR'],
+            [`Atualizado em: ${currentDate} às ${currentTime}`],
+            [],
+            ['Setor', 'Qtd Ativos', 'Valor Investido', 'Valor Atual', 'Dividendos', 'Juros', 'Rentabilidade (%)']
+        ];
+        sectorRows.forEach(r => {
+            sectorSheet.push([
+                r.sector,
+                r.count,
+                r.invested,
+                r.market,
+                r.dividends,
+                r.juros,
+                r.perf
+            ]);
+        });
+        const sectorsWS = XLSX.utils.aoa_to_sheet(sectorSheet);
+        sectorsWS['!cols'] = [
+            { wch: 22 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 16 }
+        ];
+        const secLast = sectorSheet.length;
+        (sectorsWS as any)['!autofilter'] = { ref: `A4:G${secLast}` } as any;
+        setNumberFormat(sectorsWS, XLSX.utils.encode_range({ r: 3, c: 2 }, { r: secLast - 1, c: 4 }), "R$ #,##0.00");
+        setNumberFormat(sectorsWS, XLSX.utils.encode_range({ r: 3, c: 6 }, { r: secLast - 1, c: 6 }), "0.00%");
+        XLSX.utils.book_append_sheet(workbook, sectorsWS, '📈 Resumo por Setor');
+
+        // ===========================================
+        // ABA 4: TOP ATIVOS (por valor e por rentabilidade)
+        // ===========================================
+        const totalMarketAll = portfolios.reduce((s, p) => s + p.marketValue, 0) || 1;
+        const topByValue = [...portfolios].sort((a, b) => b.marketValue - a.marketValue).slice(0, 15);
+        const topByPerf = [...portfolios].sort((a, b) => (b.profitPercent || 0) - (a.profitPercent || 0)).slice(0, 15);
+        const topSheet = [
+            ['ERASMO INVEST - TOP ATIVOS'],
+            [`Atualizado em: ${currentDate} às ${currentTime}`],
+            [],
+            ['TOP POR VALOR'],
+            ['Ticker', 'Nome', 'Tipo', 'Valor Atual', '% do Total', 'Investido', 'Dividendos', 'Rentab. (%)'],
+        ];
+        topByValue.forEach(p => {
+            topSheet.push([
+                p.ticker,
+                p.metadata?.nome || p.ticker,
+                p.metadata?.tipo || 'N/A',
+                p.marketValue,
+                p.marketValue / totalMarketAll,
+                p.totalInvested,
+                p.totalDividends,
+                (p.profitPercent || 0) / 100,
+            ]);
+        });
+        topSheet.push([]);
+        topSheet.push(['TOP POR RENTABILIDADE']);
+        topSheet.push(['Ticker', 'Nome', 'Tipo', 'Valor Atual', '% do Total', 'Investido', 'Dividendos', 'Rentab. (%)']);
+        topByPerf.forEach(p => {
+            topSheet.push([
+                p.ticker,
+                p.metadata?.nome || p.ticker,
+                p.metadata?.tipo || 'N/A',
+                p.marketValue,
+                p.marketValue / totalMarketAll,
+                p.totalInvested,
+                p.totalDividends,
+                (p.profitPercent || 0) / 100,
+            ]);
+        });
+        const topWS = XLSX.utils.aoa_to_sheet(topSheet);
+        topWS['!cols'] = [
+            { wch: 10 }, { wch: 28 }, { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 14 }
+        ];
+        const topLast = topSheet.length;
+        // Formatos numéricos
+        // Primeira tabela: começa na linha 5 (0-based r=4) até 5+topByValue.length-1
+        const firstStart = 5; // 1-based
+        const firstEnd = firstStart + topByValue.length - 1;
+        setNumberFormat(topWS, XLSX.utils.encode_range({ r: firstStart - 1, c: 3 }, { r: firstEnd - 1, c: 3 }), "R$ #,##0.00");
+        setNumberFormat(topWS, XLSX.utils.encode_range({ r: firstStart - 1, c: 4 }, { r: firstEnd - 1, c: 4 }), "0.00%");
+        setNumberFormat(topWS, XLSX.utils.encode_range({ r: firstStart - 1, c: 5 }, { r: firstEnd - 1, c: 5 }), "R$ #,##0.00");
+        setNumberFormat(topWS, XLSX.utils.encode_range({ r: firstStart - 1, c: 6 }, { r: firstEnd - 1, c: 6 }), "R$ #,##0.00");
+        setNumberFormat(topWS, XLSX.utils.encode_range({ r: firstStart - 1, c: 7 }, { r: firstEnd - 1, c: 7 }), "0.00%");
+        // Segunda tabela: cabeçalho está 2 linhas depois da primeira lista + 2 linhas extra
+        const secondHeaderRow = firstEnd + 2 + 1; // +1 por ser 1-based
+        const secondStart = secondHeaderRow + 1;
+        const secondEnd = secondStart + topByPerf.length - 1;
+        setNumberFormat(topWS, XLSX.utils.encode_range({ r: secondStart - 1, c: 3 }, { r: secondEnd - 1, c: 3 }), "R$ #,##0.00");
+        setNumberFormat(topWS, XLSX.utils.encode_range({ r: secondStart - 1, c: 4 }, { r: secondEnd - 1, c: 4 }), "0.00%");
+        setNumberFormat(topWS, XLSX.utils.encode_range({ r: secondStart - 1, c: 5 }, { r: secondEnd - 1, c: 5 }), "R$ #,##0.00");
+        setNumberFormat(topWS, XLSX.utils.encode_range({ r: secondStart - 1, c: 6 }, { r: secondEnd - 1, c: 6 }), "R$ #,##0.00");
+        setNumberFormat(topWS, XLSX.utils.encode_range({ r: secondStart - 1, c: 7 }, { r: secondEnd - 1, c: 7 }), "0.00%");
+        XLSX.utils.book_append_sheet(workbook, topWS, '⭐ Top Ativos');
 
         // ===========================================
         // ABAS INDIVIDUAIS POR ATIVO
@@ -363,7 +498,9 @@ function App() {
             let investimentoAcumulado = 0;
 
             data.forEach((row, index) => {
-                const formattedDate = new Date(row.data).toLocaleDateString('pt-BR');
+                const rawDate: any = (row as any).date || (row as any).data;
+                const d = new Date(rawDate);
+                const formattedDate = isNaN(d.getTime()) ? (typeof rawDate === 'string' ? rawDate : '') : d.toLocaleDateString('pt-BR');
 
                 let quantidade = 0;
                 let valorTotal = 0;
@@ -387,14 +524,14 @@ function App() {
                 assetData.push([
                     formattedDate,
                     row.tipo,
-                    quantidade !== 0 ? Math.abs(quantidade).toLocaleString('pt-BR') : '',
-                    row.valor_unitario > 0 ? `R$ ${row.valor_unitario.toLocaleString('pt-BR', {minimumFractionDigits: 4})}` : '',
-                    valorTotal !== 0 ? `R$ ${Math.abs(valorTotal).toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : '',
-                    row.dividendos > 0 ? `R$ ${row.dividendos.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : '',
-                    row.juros > 0 ? `R$ ${row.juros.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : '',
-                    row.impostos > 0 ? `R$ ${row.impostos.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : '',
-                    dyOperacao > 0 ? `${dyOperacao.toFixed(2)}%` : '',
-                    posicaoAcumulada.toLocaleString('pt-BR'),
+                    quantidade !== 0 ? Math.abs(quantidade) : '',
+                    row.valor_unitario > 0 ? row.valor_unitario : '',
+                    valorTotal !== 0 ? Math.abs(valorTotal) : '',
+                    row.dividendos > 0 ? row.dividendos : '',
+                    row.juros > 0 ? row.juros : '',
+                    row.impostos > 0 ? row.impostos : '',
+                    dyOperacao > 0 ? dyOperacao / 100 : '',
+                    posicaoAcumulada,
                     row.observacoes || ''
                 ]);
             });
@@ -420,6 +557,16 @@ function App() {
                 { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 15 }, { wch: 15 },
                 { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 30 }
             ];
+            // Aplicar Autofiltro e formatos nesta planilha de ativo
+            const headerRowIdx = assetData.findIndex(r => r && r[0] === 'Data');
+            if (headerRowIdx >= 0) {
+                const totalRows = assetData.length;
+                (ws as any)['!autofilter'] = { ref: `A${headerRowIdx + 1}:K${totalRows}` } as any;
+                // Quantidade (C), Valores (D..H), DY% (I)
+                setNumberFormat(ws, XLSX.utils.encode_range({ r: headerRowIdx + 1, c: 2 }, { r: totalRows - 1, c: 2 }), "0");
+                setNumberFormat(ws, XLSX.utils.encode_range({ r: headerRowIdx + 1, c: 3 }, { r: totalRows - 1, c: 7 }), "R$ #,##0.00");
+                setNumberFormat(ws, XLSX.utils.encode_range({ r: headerRowIdx + 1, c: 8 }, { r: totalRows - 1, c: 8 }), "0.00%");
+            }
 
             XLSX.utils.book_append_sheet(workbook, ws, portfolio.ticker);
         });
@@ -431,6 +578,11 @@ function App() {
 
         toast.success('📊 Planilha Excel profissional exportada com sucesso!');
     };
+
+  // ============================================
+  // EXPORTAÇÃO POWER BI (Star Schema + DAX Guide)
+  // ============================================
+  // exportPowerBI removido a pedido do usuário
 
     const exportSingleAsset = () => {
         const portfolio = portfolios.find(p => p.ticker === activeTab);
@@ -715,6 +867,7 @@ function App() {
                             <Download className="h-4 w-4" />
                             <span>Excel Completo</span>
                         </button>
+                        {/* Power BI (Pro) removido a pedido do usuário */}
                     </div>
                 </div>
 

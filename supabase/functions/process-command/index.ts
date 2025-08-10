@@ -72,6 +72,45 @@ Exemplos:
     JSON: {"action": "query_market_price", "parameters": {"ticker": "PETR4"}}
 `;
 
+// Mapa de sinônimos para tickers comuns (PT/variações)
+const TICKER_SYNONYMS: Record<string, string> = {
+  'vale': 'VALE3',
+  'vale3': 'VALE3',
+  'petrobras': 'PETR4',
+  'petr4': 'PETR4',
+  'itau': 'ITUB4',
+  'itaú': 'ITUB4',
+  'bradesco': 'BBDC4',
+  'banco do brasil': 'BBAS3',
+  'magalu': 'MGLU3',
+  'weg': 'WEGE3',
+  'mxrf': 'MXRF11',
+  'hglg': 'HGLG11',
+  'b3': 'B3SA3'
+};
+
+function normalizeTickerLike(text: string | undefined): string | undefined {
+  if (!text) return text;
+  const compact = text.replace(/\s+/g, '').toUpperCase();
+  return compact;
+}
+
+function inferTickerFromText(rawText: string): string | undefined {
+  const text = rawText.toLowerCase();
+  // 1) Sinônimos por nome
+  for (const [key, ticker] of Object.entries(TICKER_SYNONYMS)) {
+    if (text.includes(key)) return ticker;
+  }
+  // 2) Padrões: ABCD11 / ABCD4 / ABCD3 etc.
+  const mFii = text.match(/\b([A-Za-z]{4})\s?11\b/);
+  if (mFii) return mFii[1].toUpperCase() + '11';
+  const mBr = text.match(/\b([A-Za-z]{4})\s?(3|4)\b/);
+  if (mBr) return (mBr[1] + mBr[2]).toUpperCase();
+  const mUs = text.match(/\b([A-Z]{1,5})\b/);
+  if (mUs) return mUs[1].toUpperCase();
+  return undefined;
+}
+
 async function processWithQwen(text: string) {
   if (!OPENROUTER_API_KEY) {
     throw new Error('QWEN_OPENROUTER_API não configurada.');
@@ -86,7 +125,7 @@ async function processWithQwen(text: string) {
       'X-Title': 'ErasmoInvest',
     },
     body: JSON.stringify({
-            model: 'qwen/qwen3-32b-instruct', // Modelo intermediário poderoso para extração
+            model: 'qwen/qwen3-30b-a3b-instruct-2507',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: text },
@@ -119,6 +158,25 @@ serve(async (req) => {
     console.log(`[process-command] User ${userId || 'anônimo'}: "${text.substring(0, 80)}..."`);
 
         const structuredCommand = await processWithQwen(text);
+
+    // Pós-processamento: normalização de ticker e preenchimento por sinônimo/regex
+    try {
+      const params = structuredCommand.parameters || structuredCommand.params || {};
+      if (params) {
+        const maybeTicker = params.ticker || inferTickerFromText(text);
+        if (maybeTicker) {
+          const normalized = normalizeTickerLike(maybeTicker);
+          // normalizar por sinônimos (ex.: 'vale' -> 'VALE3')
+          const bySyn = TICKER_SYNONYMS[(normalized || '').toLowerCase()] || normalized;
+          params.ticker = bySyn;
+        }
+        // Normalizar datas vazias: default hoje para operações
+        if (!params.date && ['add_investment','sell_investment','add_dividend'].includes(structuredCommand.action)) {
+          params.date = new Date().toISOString().slice(0,10);
+        }
+        structuredCommand.parameters = params;
+      }
+    } catch (_) {}
 
     const latency = Date.now() - t0;
     await supabaseClient.from('agent_logs').insert({

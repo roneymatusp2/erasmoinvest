@@ -35,32 +35,33 @@ class SnapshotCalculator {
     }
 
     try {
+      // 1) Preferir PTAX oficial via função dedicada
+      try {
+        const { data, error } = await this.supabase.functions.invoke('bacen-ptax', { body: { action: 'current' } })
+        if (!error && data?.data?.usd_brl_rate) {
+          const rate = Number(data.data.usd_brl_rate)
+          if (rate > 0) {
+            await this.supabase.from('currency_rates').upsert({ pair: 'USDBRL', rate: rate.toString(), updated_at: new Date().toISOString() })
+            return rate
+          }
+        }
+      } catch (_) {}
+
+      // 2) Fallback para ExchangeRate se PTAX indisponível
       const apiKey = Deno.env.get("EXCHANGERATE_API_KEY")
       if (!apiKey) throw new Error('Secret EXCHANGERATE_API_KEY não encontrada.')
-
       const url = `https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`
       const response = await fetch(url, { signal: AbortSignal.timeout(5000) })
-
       if (!response.ok) {
         const errorBody = await response.text()
         throw new Error(`Falha na API de cotação: ${response.status} - ${errorBody}`)
       }
-
       const data = await response.json()
       if (data.result !== 'success') throw new Error(`API de cotação retornou erro: ${data['error-type']}`)
-
       const rate = data.conversion_rates?.BRL
       if (typeof rate !== 'number') throw new Error(`Taxa BRL inválida na resposta da API.`)
-
-      await this.supabase.from('currency_rates').upsert({
-        pair: 'USDBRL',
-        rate: rate.toString(),
-        updated_at: new Date().toISOString()
-      })
-      
-      console.log(`💱 Nova cotação do Dólar salva no cache: ${rate}`)
+      await this.supabase.from('currency_rates').upsert({ pair: 'USDBRL', rate: rate.toString(), updated_at: new Date().toISOString() })
       return rate
-
     } catch (apiError) {
       console.error('CRÍTICO: Não foi possível buscar a cotação do Dólar. Usando fallback.', apiError)
       return fallbackRate
@@ -164,9 +165,30 @@ class SnapshotCalculator {
 
 serve(async (req) => {
   try {
-    // O ID do usuário é fixo, conforme a regra de negócio.
-    const userId = '4362da88-d01c-4ffe-a447-75751ea8e182'
-    
+    // ID fixo do sistema, mas aceita override via query param `user_id` por compatibilidade
+    const defaultUserId = '4362da88-d01c-4ffe-a447-75751ea8e182'
+    let userId = defaultUserId
+
+    try {
+      const url = new URL(req.url)
+      const qp = url.searchParams.get('user_id')
+      if (qp && qp.length > 0) userId = qp
+    } catch (_) {
+      // ignora erros de parse da URL
+    }
+
+    // Também suporta body JSON opcional { user_id }
+    if (req.headers.get('content-type')?.includes('application/json')) {
+      try {
+        const body = await req.json()
+        if (typeof body?.user_id === 'string' && body.user_id.length > 0) {
+          userId = body.user_id
+        }
+      } catch (_) {
+        // ignore body parse when not provided
+      }
+    }
+
     const calculator = new SnapshotCalculator()
     const result = await calculator.generateSnapshot(userId)
 

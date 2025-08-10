@@ -225,6 +225,8 @@ export const portfolioService = {
           portfolio.totalJuros *= usdToBrlRate;
           portfolio.averagePrice *= usdToBrlRate;
           portfolio.currentPrice *= usdToBrlRate;
+          // Marcar que os valores do portfolio já estão em BRL para evitar dupla conversão na UI
+          portfolio.moeda = 'BRL' as const;
         }
 
         portfolio.profit = portfolio.marketValue - portfolio.totalInvested;

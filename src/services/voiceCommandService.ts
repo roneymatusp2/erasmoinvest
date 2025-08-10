@@ -499,6 +499,25 @@ class VoiceCommandService {
         }
     }
 
+    // Versão RAW para preservar números/tabelas quando necessário (ex.: explicação de gráficos)
+    async getTextResponseRaw(command: string): Promise<string> {
+        try {
+            const userId = '4362da88-d01c-4ffe-a447-75751ea8e182';
+            const { data, error } = await supabase.functions.invoke('cognitive-core', {
+                body: { commandText: command, userId },
+            });
+            if (error) throw new Error(error.message || 'Erro');
+            const raw = data?.data?.response || '';
+            if (!raw) throw new Error('Resposta vazia');
+            // salvar para áudio
+            this.state.result = { action: 'cognitive_response', data: { response: raw }, success: true, timestamp: new Date().toISOString() } as any;
+            return raw;
+        } catch (e) {
+            console.error('getTextResponseRaw erro:', e);
+            return 'Não foi possível obter uma resposta.';
+        }
+    }
+
     /**
      * 🎨 FORMATAÇÃO APRIMORADA DE RESPOSTA PARA UI
      * Converte markdown e caracteres de escape para texto perfeitamente limpo
@@ -638,6 +657,159 @@ class VoiceCommandService {
             .replace(/\n{3,}/g, '\n\n')
             
             .trim();
+    }
+
+    // Formatação específica para explicação de gráficos (remove md e organiza seções)
+    private formatChartExplanationForUI(raw: string, title: string): string {
+        let t = this.formatResponseForUI(raw);
+        // Remover cabeçalhos redundantes e emojis remanescentes
+        t = t
+            .replace(/^[#>*\s_-]+/gm, '')
+            .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+
+        // Normalizar bullets que vieram com • ou *
+        t = t.replace(/^•\s+/gm, '- ').replace(/^\*\s+/gm, '- ');
+
+        // Assegurar seções em letras maiúsculas simples
+        const sectionMap: Record<string, string> = {
+            'o que é este gráfico': 'O QUE É ESTE GRÁFICO E PARA QUE SERVE',
+            'como interpretar': 'COMO INTERPRETAR NESTE CONTEXTO',
+            'o que os dados mostram': 'O QUE OS DADOS MOSTRAM',
+            'insights práticos': 'INSIGHTS PRÁTICOS',
+            'pontos de atenção': 'PONTOS DE ATENÇÃO',
+            'conclusão': 'CONCLUSÃO'
+        };
+        Object.entries(sectionMap).forEach(([k, v]) => {
+            const re = new RegExp(`^\n*\s*${k}[^\n]*\n`, 'i');
+            t = t.replace(re, `\n${v}\n`);
+        });
+
+        // Garantir título da explicação
+        if (!/^O QUE É ESTE GRÁFICO E PARA QUE SERVE/m.test(t)) {
+            t = `TÍTULO: ${title}\n\n` + t;
+        }
+
+        return t.trim();
+    }
+
+    // Detecta tipo geral do gráfico a partir do título/dados
+    private detectChartType(title: string, data: any): 'LINE' | 'AREA' | 'BAR' | 'PIE' | 'RADAR' | 'SCATTER' | 'TREEMAP' | 'COMPOSED' | 'UNKNOWN' {
+        const t = (title || '').toLowerCase();
+        if (t.includes('evolução') || t.includes('timeline') || t.includes('rentabilidade') || t.includes('comparação')) return 'LINE';
+        if (t.includes('proventos') || t.includes('área') || t.includes('area')) return 'AREA';
+        if (t.includes('distribuição') || t.includes('top') || t.includes('peso') || t.includes('concentração')) return 'BAR';
+        if (t.includes('alocação') || t.includes('setor') || t.includes('pizza')) return 'PIE';
+        if (t.includes('risco') && t.includes('multi') || t.includes('radar')) return 'RADAR';
+        if (t.includes('risco x retorno') || t.includes('dispersão')) return 'SCATTER';
+        if (t.includes('mapa de calor') || (data && data.children)) return 'TREEMAP';
+        if (t.includes('composed') || t.includes('combinado')) return 'COMPOSED';
+        return 'UNKNOWN';
+    }
+
+    // Texto-base especializado por tipo de gráfico
+    private chartTypePrimer(type: ReturnType<typeof this.detectChartType>): string {
+        switch (type) {
+            case 'LINE':
+                return [
+                    'Tipo: Gráfico de Linhas',
+                    'Para que serve: acompanhar evolução de valores/percentuais ao longo do tempo e identificar tendências',
+                    'Como ler: eixo X são as datas; eixo Y são os valores; a inclinação indica velocidade de variação',
+                    'Boas práticas:',
+                    '- Compare início vs fim do período para retorno acumulado',
+                    '- Procure picos/vales e relacione com eventos (ex.: aportes, resultados, juros)',
+                    '- Use média móvel mental: tendência de alta se topos e fundos são ascendentes',
+                    'Sinais de alerta:',
+                    '- Oscilações muito bruscas em curtos intervalos indicam alta volatilidade',
+                    '- Longos períodos laterais podem sugerir capital parado',
+                ].join('\n');
+            case 'AREA':
+                return [
+                    'Tipo: Gráfico de Área',
+                    'Para que serve: evidenciar a evolução com ênfase no volume acumulado (proventos, valor total)',
+                    'Como ler: mesma leitura do de linhas, porém a área preenchida evidencia crescimento sustentado',
+                    'Boas práticas:',
+                    '- Observe a consistência da área: crescimento suave é melhor que picos isolados',
+                    '- Compare inclinações entre trechos para avaliar aceleração ou desaceleração',
+                    'Sinais de alerta:',
+                    '- Áreas planas longas podem indicar ausência de evolução',
+                ].join('\n');
+            case 'BAR':
+                return [
+                    'Tipo: Gráfico de Barras',
+                    'Para que serve: comparar categorias (ativos, setores, pesos, risco) lado a lado',
+                    'Como ler: a altura da barra representa magnitude; ordene mentalmente do maior para o menor',
+                    'Boas práticas:',
+                    '- Identifique concentrações: itens acima de 20% merecem atenção',
+                    '- Verifique caudas longas: muitos itens pequenos podem dispersar foco',
+                    'Sinais de alerta:',
+                    '- 1 ou 2 barras dominantes indicam risco de concentração',
+                ].join('\n');
+            case 'PIE':
+                return [
+                    'Tipo: Gráfico de Pizza',
+                    'Para que serve: visualizar participação de cada categoria no total (alocação por tipo/ setor)',
+                    'Como ler: cada fatia é uma participação; soma 100%',
+                    'Boas práticas:',
+                    '- Ideal: 4 a 8 fatias relevantes; muitas fatias minúsculas dificultam leitura',
+                    '- Mantenha maiores fatias abaixo de 25% para reduzir concentração',
+                    'Sinais de alerta:',
+                    '- Uma única fatia acima de 35% indica concentração excessiva',
+                ].join('\n');
+            case 'RADAR':
+                return [
+                    'Tipo: Gráfico de Radar',
+                    'Para que serve: comparar múltiplas dimensões (diversificação, volatilidade, qualidade, concentração)',
+                    'Como ler: quanto mais distante do centro, maior a pontuação; áreas mais “redondas” e amplas são melhores',
+                    'Boas práticas:',
+                    '- Busque equilíbrio: nenhuma dimensão muito baixa',
+                    '- Priorize elevar pontos fracos sem sacrificar os fortes',
+                    'Sinais de alerta:',
+                    '- Forma muito “pontuda” indica desequilíbrio estrutural de risco',
+                ].join('\n');
+            case 'SCATTER':
+                return [
+                    'Tipo: Gráfico de Dispersão',
+                    'Para que serve: relacionar duas variáveis (ex.: risco x retorno) por ativo',
+                    'Como ler: cada ponto é um ativo; quadrantes importam',
+                    'Boas práticas:',
+                    '- Busque pontos no quadrante retorno alto e risco baixo',
+                    '- Identifique outliers e investigue causas',
+                    'Sinais de alerta:',
+                    '- Muitos pontos com alto risco e baixo retorno indicam seleção ineficiente',
+                ].join('\n');
+            case 'TREEMAP':
+                return [
+                    'Tipo: Treemap (Mapa de Calor)',
+                    'Para que serve: visualizar peso relativo por ativo/setor e, opcionalmente, performance pela cor',
+                    'Como ler: tamanho do bloco = valor/peso; cor = performance; agrupamentos revelam concentração',
+                    'Boas práticas:',
+                    '- Procure blocos maiores: avalie se justificam o peso',
+                    '- Compare cor e tamanho: peso grande com cor ruim = risco de arrasto',
+                    'Sinais de alerta:',
+                    '- Poucos blocos dominando a área total indicam concentração excessiva',
+                ].join('\n');
+            case 'COMPOSED':
+                return [
+                    'Tipo: Gráfico Composto',
+                    'Para que serve: relacionar variáveis diferentes (ex.: investido x valor x proventos) na mesma visão',
+                    'Como ler: barras indicam magnitude pontual; linhas mostram tendência; leia escalas cuidadosamente',
+                    'Boas práticas:',
+                    '- Verifique coerência: linha de valor deve responder a barras de aporte/provento',
+                    '- Foque cruzamentos: mudanças de tendência após eventos relevantes',
+                    'Sinais de alerta:',
+                    '- Escalas muito diferentes podem enganar; interprete cada eixo separadamente',
+                ].join('\n');
+            default:
+                return [
+                    'Tipo: Gráfico Financeiro',
+                    'Como ler: eixo X geralmente é tempo; eixo Y são valores/percentuais; compare tendências e concentrações',
+                    'Boas práticas:',
+                    '- Destaque 3-6 observações com números',
+                    '- Converta achados em 3-5 ações práticas',
+                ].join('\n');
+        }
     }
 
     /**
@@ -820,26 +992,42 @@ class VoiceCommandService {
             // 🔧 CORREÇÃO: Converter dados do gráfico em texto descritivo
             const chartDescription = this.formatChartDataForAI(chartTitle, chartData);
 
+            // Detectar tipo de gráfico para instruções especializadas
+            const chartType = this.detectChartType(chartTitle, chartData);
+            const primer = this.chartTypePrimer(chartType);
+
             // 🔧 CORREÇÃO: Usar formato correto do cognitive-core
-            const commandText = `Analise e explique este gráfico de investimentos em detalhes:
+            const commandText = `Você é um analista financeiro sênior. Explique o gráfico A SEGUIR em português do Brasil.
 
-TÍTULO: ${chartTitle}
+TÍTULO DO GRÁFICO: ${chartTitle}
 
-DADOS DO GRÁFICO:
+DADOS DO GRÁFICO (use estes números no texto):
 ${chartDescription}
 
-Por favor, forneça uma análise completa incluindo:
-1. O que os dados mostram sobre minha situação financeira
-2. Tendências e padrões importantes
-3. Insights e recomendações práticas
-4. Pontos de atenção ou oportunidades
+CONTEXTO DO TIPO DE GRÁFICO:
+${primer}
 
-Seja específico e use os números fornecidos para dar contexto real ao Erasmo.`;
+REGRAS DE FORMATAÇÃO (obrigatórias):
+- Responda em TEXTO PLANO. Não use markdown, não use asteriscos, não use **negrito**, não use tabelas, não use blocos de código.
+- Estruture em seções com cabeçalhos simples em maiúsculas.
+- Use listas com hífen '-' para bullets. Linhas curtas, objetivas.
+- Mencione valores sempre com R$ e percentuais com %.
+- Nada de emojis.
+
+ORDEM DAS SEÇÕES:
+1) O QUE É ESTE GRÁFICO E PARA QUE SERVE: descreva o tipo de gráfico e como interpretar rapidamente.
+2) COMO INTERPRETAR NESTE CONTEXTO: o que cada linha/área/barras representa e como ler o eixo.
+3) O QUE OS DADOS MOSTRAM: destaque 3-6 observações com números (tendências, picos, quedas, composição etc.).
+4) INSIGHTS PRÁTICOS: 3-5 ações sugeridas, objetivas e justificadas pelos números.
+5) PONTOS DE ATENÇÃO: riscos e limitações do gráfico.
+6) CONCLUSÃO: síntese em 2-3 frases.
+`;
 
             console.log('🧠 Enviando análise de gráfico para o Cognitive Core:', commandText.substring(0, 200) + '...');
 
             // Usar o método getTextResponse que já funciona
-            const explanationText = await this.getTextResponse(commandText);
+            // Usar RAW para não perder números e tabelas
+            const explanationText = await this.getTextResponseRaw(commandText);
 
             if (!explanationText || explanationText === 'Não foi possível obter uma resposta. Tente novamente.') {
                 throw new Error('Resposta inválida do serviço de explicação.');
@@ -847,11 +1035,11 @@ Seja específico e use os números fornecidos para dar contexto real ao Erasmo.`
 
             console.log('✅ Explicação recebida do Core:', explanationText.substring(0, 100) + '...');
 
-            // 🎵 NÃO tocar áudio automaticamente - apenas retornar o texto
-            // O áudio será tocado apenas se o usuário solicitar
+            // Pós-processar para layout limpo e introdução do tipo de gráfico
+            const cleaned = this.formatChartExplanationForUI(explanationText, chartTitle);
 
             return {
-                text: explanationText,
+                text: cleaned,
                 audioUrl: '' // Áudio disponível via playTextAudio() se solicitado
             };
 

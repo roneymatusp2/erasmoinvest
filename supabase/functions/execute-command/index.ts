@@ -31,7 +31,18 @@ serve(async (req) => {
     );
 
     // O corpo da requisição agora é padronizado pela nova arquitetura.
-    const { action, params, userId } = await req.json();
+    let action = '' as string
+    let params: any = {}
+    try {
+      const body = await req.json();
+      action = body?.action ?? ''
+      params = body?.params ?? {}
+    } catch (_) {
+      // aceitar também querystring como fallback
+      const url = new URL(req.url)
+      action = url.searchParams.get('action') ?? ''
+      try { params = JSON.parse(url.searchParams.get('params') ?? '{}') } catch { params = {} }
+    }
 
     if (!action) {
       throw new Error('Ação (action) é obrigatória.');
@@ -49,6 +60,21 @@ serve(async (req) => {
       // Ação para adicionar um novo registro de investimento.
       // Respeita a estrutura imutável da tabela 'investments'.
       case 'add_investment':
+        // Idempotência básica: checar duplicidade por user/ticker/data/compra/valor_unit
+        if (params && params.ticker && params.date && params.quantity && params.price) {
+          const { data: dup } = await supabaseAdmin
+            .from('investments')
+            .select('id')
+            .eq('user_id', fixedUserId)
+            .eq('ticker', params.ticker)
+            .eq('date', params.date)
+            .eq('compra', params.quantity)
+            .eq('valor_unit', params.price)
+            .limit(1);
+          if (dup && dup.length > 0) {
+            return new Response(JSON.stringify({ success: true, data: { idempotent: true, existing_id: dup[0].id } }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
+        }
         ({ data, error } = await supabaseAdmin
           .from('investments')
           .insert({
@@ -64,6 +90,66 @@ serve(async (req) => {
           })
           .select()
           .single()); // Retorna um único objeto em vez de um array
+        break;
+
+      // Ação para registrar uma venda de ativo.
+      case 'sell_investment':
+        if (params && params.ticker && params.date && params.quantity && params.price) {
+          const { data: dup } = await supabaseAdmin
+            .from('investments')
+            .select('id')
+            .eq('user_id', fixedUserId)
+            .eq('ticker', params.ticker)
+            .eq('date', params.date)
+            .eq('venda', params.quantity)
+            .eq('valor_unit', params.price)
+            .limit(1);
+          if (dup && dup.length > 0) {
+            return new Response(JSON.stringify({ success: true, data: { idempotent: true, existing_id: dup[0].id } }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
+        }
+        ({ data, error } = await supabaseAdmin
+          .from('investments')
+          .insert({
+            user_id: fixedUserId,
+            ticker: params.ticker,
+            date: params.date,
+            venda: params.quantity,
+            valor_unit: params.price,
+            observacoes: params.observation || 'Venda registrada via IA',
+            currency: params.currency || 'BRL',
+          })
+          .select()
+          .single());
+        break;
+
+      // Ação para registrar recebimento de proventos (dividendos/JCP)
+      case 'add_dividend':
+        if (params && params.ticker && params.date && params.amount) {
+          const { data: dup } = await supabaseAdmin
+            .from('investments')
+            .select('id')
+            .eq('user_id', fixedUserId)
+            .eq('ticker', params.ticker)
+            .eq('date', params.date)
+            .eq('dividendos', params.amount)
+            .limit(1);
+          if (dup && dup.length > 0) {
+            return new Response(JSON.stringify({ success: true, data: { idempotent: true, existing_id: dup[0].id } }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
+        }
+        ({ data, error } = await supabaseAdmin
+          .from('investments')
+          .insert({
+            user_id: fixedUserId,
+            ticker: params.ticker,
+            date: params.date,
+            dividendos: params.amount,
+            observacoes: params.observation || 'Provento (dividendos/JCP) via IA',
+            currency: 'BRL',
+          })
+          .select()
+          .single());
         break;
 
       // Ação para obter o resumo completo e agregado do portfólio.

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Edit, Trash2, Save, X, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { investmentService } from '../services/supabaseService';
 import AssetDetails from './AssetDetails';
 import PrecisionCalc from '../utils/precisionCalc';
+import { marketApiService } from '../services/marketApi';
 
 interface InvestmentTableProps {
   activeTab: string;
@@ -27,6 +28,18 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
 }) => {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editData, setEditData] = useState<any>(null);
+  const [usdToBrl, setUsdToBrl] = useState<number>(1);
+
+  useEffect(() => {
+    // Buscar taxa de câmbio apenas para exibição BRL de ativos USD
+    let mounted = true;
+    marketApiService.getUSDBRLExchangeRate()
+      .then((rate) => {
+        if (mounted && rate && rate > 0) setUsdToBrl(rate);
+      })
+      .catch(() => {})
+    return () => { mounted = false; };
+  }, []);
 
   const formatNumber = (num: number, decimals = 2) => {
     if (num === 0 || num === null || num === undefined) return '0,00';
@@ -217,14 +230,23 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
   };
 
 
-  const formatCurrency = (value: number, moeda: string) => {
-    return PrecisionCalc.formatCurrency(value, moeda as 'BRL' | 'USD');
+  // Exibição sempre em BRL (preferência do usuário). Se o ativo estiver em USD,
+  // converte apenas para exibição usando a taxa atual.
+  const toDisplayValue = (value: number): number => {
+    if (!value) return 0;
+    return (metadata?.moeda === 'USD') ? PrecisionCalc.round7(value * usdToBrl) : value;
+  };
+
+  const formatCurrency = (value: number) => {
+    return PrecisionCalc.formatCurrency(value, 'BRL');
   };
 
   // Converter todos os dados para o formato correto antes de usar
   const data = investments.map(convertToInvestmentRow);
   const totals = getTotalsFromPortfolio();
-  const moeda = metadata?.moeda || 'BRL';
+  // A UI deve sempre exibir em BRL, mas preservamos o indicador se o ativo é USD
+  const isUSDAsset = metadata?.moeda === 'USD';
+  const moeda = 'BRL';
 
   const renderHeader = () => {
     return (
@@ -300,7 +322,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
               <th className="px-4 py-4 font-semibold">Valor Total</th>
               <th className="px-4 py-4 font-semibold">Dividendos</th>
               <th className="px-4 py-4 font-semibold">Juros</th>
-              {moeda === 'USD' && (
+              {isUSDAsset && (
                 <th className="px-4 py-4 font-semibold">Impostos</th>
               )}
               <th className="px-4 py-4 font-semibold">DY(%)</th>
@@ -381,12 +403,12 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
                         className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm w-full"
                       />
                     ) : (
-                      row.valor_unitario ? `${formatCurrency(row.valor_unitario, moeda)}` : ''
+                      row.valor_unitario ? `${formatCurrency(toDisplayValue(row.valor_unitario))}` : ''
                     )}
                   </td>
                   <td className="px-4 py-2 font-medium">
-                    {valorTotal && (row.tipo === 'COMPRA' || row.tipo === 'VENDA') ? 
-                      `${formatCurrency(valorTotal, moeda)}` : ''}
+                     {valorTotal && (row.tipo === 'COMPRA' || row.tipo === 'VENDA') ? 
+                      `${formatCurrency(toDisplayValue(valorTotal))}` : ''}
                   </td>
                   <td className="px-4 py-2 text-green-400">
                     {isEditing ? (
@@ -398,7 +420,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
                         className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm w-full"
                       />
                     ) : (
-                      row.dividendos ? `${formatCurrency(row.dividendos, moeda)}` : ''
+                      row.dividendos ? `${formatCurrency(toDisplayValue(row.dividendos))}` : ''
                     )}
                   </td>
                   <td className="px-4 py-2 text-blue-400">
@@ -411,10 +433,10 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
                         className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm w-full"
                       />
                     ) : (
-                      row.juros ? `${formatCurrency(row.juros, moeda)}` : ''
+                      row.juros ? `${formatCurrency(toDisplayValue(row.juros))}` : ''
                     )}
                   </td>
-                  {moeda === 'USD' && (
+                  {isUSDAsset && (
                     <td className="px-4 py-2 text-yellow-400">
                       {isEditing ? (
                         <input
@@ -425,7 +447,7 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
                           className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm w-full"
                         />
                       ) : (
-                        row.impostos ? `${formatCurrency(row.impostos, moeda)}` : ''
+                        row.impostos ? `${formatCurrency(toDisplayValue(row.impostos))}` : ''
                       )}
                     </td>
                   )}
@@ -505,9 +527,9 @@ const InvestmentTable: React.FC<InvestmentTableProps> = ({
               <td className="px-4 py-4 text-blue-400 font-bold">
                 <span className="bg-blue-900/20 px-2 py-1 rounded">{formatCurrency(totals.totalJuros, moeda)}</span>
               </td>
-              {moeda === 'USD' && (
+              {isUSDAsset && (
                 <td className="px-4 py-3 text-yellow-400">
-                  {formatCurrency(totals.totalImpostos, moeda)}
+                  {formatCurrency(toDisplayValue(totals.totalImpostos))}
                 </td>
               )}
               <td className="px-4 py-4 font-bold">
